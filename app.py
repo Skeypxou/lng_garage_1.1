@@ -673,140 +673,204 @@ def show_devis():
 
 def show_ordres():
     st.title("🔧 Ordres de Réparation (OR)")
-    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Créer", "🔍 Suivi / Modifier"])
     
+    tab1, tab2, tab3 = st.tabs(["📋 Liste des Ordres", "➕ Créer un Ordre", "🔍 Suivi / Modifier"])
+    
+    # --- TAB 1 : LISTE ---
     with tab1:
-        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_o.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            def statut_icon(val): return "⏳ En attente" if val=="En attente" else "🔄 En cours" if val=="En cours" else "⏸️ Suspendu" if val=="Suspendu" else "✅ Terminé" if val=="Terminé" else val
-            df['statut'] = df['statut'].apply(statut_icon)
-            st.dataframe(df[['numero_or', 'immatriculation', 'Client', 'responsable', 'statut', 'date_debut', 'date_fin']], use_container_width=True, hide_index=True)
-        else: st.info("Aucun ordre de réparation créé pour le moment.")
-
-    with tab2:
-        df_v = get_df('vehicules'); df_c = get_df('clients'); df_d = get_df('devis')
-        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un OR !")
+        ordres = get_all_records('reparations')
+        
+        if not ordres:
+            st.info("Aucun ordre de réparation créé pour le moment.")
         else:
-            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']} {r['prenom_c']}) [VehID:{r['id_v']}]", axis=1)
-            veh_choice = st.selectbox("Véhicule concerné", df_veh['display'].tolist())
-            veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
-            
-            df_devis_filtered = df_d[df_d['vehicule_id'] == veh_id]
-            devis_options = ["Aucun devis (Travaux internes)"]
-            if not df_devis_filtered.empty:
-                devis_dict_filtered = df_devis_filtered.apply(lambda r: f"{r['numero_devis']} - {r['statut']} ({r['total_ttc']}dzd) [DevisID:{r['id']}]", axis=1).tolist()
-                devis_options.extend(devis_dict_filtered)
-            devis_choice = st.selectbox("Associer à un Devis ?", devis_options)
-            devis_id = None if devis_choice == "Aucun devis (Travaux internes)" else int(devis_choice.split("[DevisID:")[1].replace("]", ""))
-            
-            with st.form("new_or"):
-                last_id_or = max([o['id'] for o in get_all_records('reparations')], default=0)
-                col1, col2, col3 = st.columns(3)
-                with col1: numero_or = st.text_input("N° Ordre de Réparation *", value=f"OR-{last_id_or+1:04d}"); responsable = st.text_input("Responsable *")
-                with col2: date_debut = st.date_input("Date de début *")
-                with col3: date_fin = st.date_input("Date de fin *")
-                statut = st.selectbox("Statut initial", ["En attente", "En cours", "Suspendu", "Terminé"])
-                if st.form_submit_button("🛠️ Créer l'Ordre de Réparation"):
-                    if numero_or and responsable and date_debut and date_fin:
-                        if str(date_fin) < str(date_debut): st.error("❌ La date de fin prévue doit être après la date de début !")
-                        else:
-                            create_record('reparations', {"devis_id": devis_id, "vehicule_id": veh_id, "numero_or": numero_or, "responsable": responsable, "date_debut": str(date_debut), "date_fin": str(date_fin), "statut": statut})
-                            st.success(f"✅ Ordre de Réparation {numero_or} créé avec succès !")
-                    else: st.error("❌ Le numéro, le responsable et les dates sont obligatoires.")
+            data_to_display = []
+            for o in ordres:
+                vehicule = get_record('vehicules', o.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                devis = get_record('devis', o.get('devis_id')) if o.get('devis_id') else None
+                
+                # Icône visuelle pour le statut
+                statut_val = o.get('statut', '')
+                if statut_val == "En attente": statut_icon = "⏳ En attente"
+                elif statut_val == "En cours": statut_icon = "🔄 En cours"
+                elif statut_val == "Suspendu": statut_icon = "⏸️ Suspendu"
+                elif statut_val == "Terminé": statut_icon = "✅ Terminé"
+                else: statut_icon = statut_val
 
+                data_to_display.append({
+                    "N° OR": o.get('numero_or', ''),
+                    "N° Devis": devis.get('numero_devis', 'N/A') if devis else 'N/A',
+                    "Immatriculation": vehicule.get('immatriculation', '') if vehicule else '',
+                    "Client": f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu',
+                    "Responsable": o.get('responsable', ''),
+                    "Statut": statut_icon,
+                    "Date début": o.get('date_debut', ''),
+                    "Date fin": o.get('date_fin', '')
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : CRÉATION ---
+    with tab2:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un OR !")
+        else:
+            # Construction du menu déroulant sans Pandas merge
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{v.get('marque', '')} "
+                        f"{v.get('modele', '')} "
+                        f"({client.get('nom', '')} "
+                        f"{client.get('prenom', '')}) [VehID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
+                    
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                veh_choice = st.selectbox("Véhicule concerné", veh_dict)
+                veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+                
+                # Filtrage des devis pour le véhicule sélectionné
+                all_devis = get_all_records('devis')
+                devis_filtered = [d for d in all_devis if d.get('vehicule_id') == veh_id]
+                
+                devis_options = ["Aucun devis (Travaux internes)"]
+                for d in devis_filtered:
+                    devis_options.append(f"{d.get('numero_devis', '')} - {d.get('statut', '')} ({d.get('total_ttc', 0)}dzd) [DevisID:{d.get('id', '')}]")
+                
+                with st.form("new_or"):
+                    st.subheader("Association Véhicule / Devis")
+                    devis_choice = st.selectbox("Associer à un Devis ?", devis_options)
+                    
+                    devis_id = None
+                    if devis_choice != "Aucun devis (Travaux internes)":
+                        devis_id = int(devis_choice.split("[DevisID:")[1].replace("]", ""))
+                    
+                    st.markdown("---")
+                    st.subheader("Planification du Travail")
+                    
+                    # Génération automatique du numéro OR
+                    all_ordres = get_all_records('reparations')
+                    last_id_or = max([o.get('id', 0) for o in all_ordres], default=0)
+                    default_numero_or = f"OR-{last_id_or+1:04d}"
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        numero_or = st.text_input("N° Ordre de Réparation *", value=default_numero_or)
+                        responsable = st.text_input("Responsable / Chef d'atelier *")
+                    with col2:
+                        date_debut = st.date_input("Date de début prévue *")
+                    with col3:
+                        date_fin = st.date_input("Date de fin prévue *")
+                        
+                    statut = st.selectbox("Statut initial", ["En attente", "En cours", "Suspendu", "Terminé"])
+                    
+                    submitted = st.form_submit_button("🛠️ Créer l'Ordre de Réparation")
+                    if submitted:
+                        if numero_or and responsable and date_debut and date_fin:
+                            if str(date_fin) < str(date_debut):
+                                st.error("❌ La date de fin prévue doit être après la date de début !")
+                            else:
+                                # Sauvegarde via JSONDB
+                                create_record('reparations', {
+                                    "devis_id": devis_id,
+                                    "vehicule_id": veh_id,
+                                    "numero_or": numero_or,
+                                    "responsable": responsable,
+                                    "date_debut": str(date_debut),
+                                    "date_fin": str(date_fin),
+                                    "statut": statut
+                                })
+                                st.success(f"✅ Ordre de Réparation {numero_or} créé avec succès !")
+                        else:
+                            st.error("❌ Le numéro, le responsable et les dates sont obligatoires.")
+
+    # --- TAB 3 : SUIVI / MODIFIER ---
     with tab3:
-        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_o.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            df['display'] = df.apply(lambda r: f"{r['numero_or']} - {r['Client']} ({r['immatriculation']}) Statut: {r['statut']} [ORID:{r['id_o']}]", axis=1)
-            or_choice = st.selectbox("Choisir un Ordre de Réparation", df['display'].tolist())
+        ordres = get_all_records('reparations')
+        
+        if not ordres:
+            st.info("Aucun ordre de réparation à suivre pour le moment.")
+        else:
+            or_dict = []
+            for o in ordres:
+                vehicule = get_record('vehicules', o.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                
+                display = f"{o.get('numero_or', '')} - {client_name} ({immat}) Statut: {o.get('statut', '')} [ORID:{o.get('id', '')}]"
+                or_dict.append(display)
+                
+            or_choice = st.selectbox("Choisir un Ordre de Réparation", or_dict)
             or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
+            
+            # Récupération de l'enregistrement
             detail = get_record('reparations', or_id)
             
-            st.write(f"### Ordre N° {detail['numero_or']}")
-            st.write(f"**Responsable :** {detail['responsable']} | **Période :** {detail['date_debut']} au {detail['date_fin']}")
+            # Sécurité : vérifier si l'enregistrement existe
+            if detail is None:
+                st.error("Ordre de réparation introuvable dans la base de données.")
+                return
             
+            # Affichage visuel du statut
+            statut_color = {
+                "En attente": "🟡", "En cours": "🔵", "Suspendu": "🔴", "Terminé": "🟢"
+            }
+            current_color = statut_color.get(detail.get('statut', ''), "⚪")
+            
+            st.write(f"### {current_color} Ordre N° {detail.get('numero_or', '')}")
+            st.write(f"**Responsable :** {detail.get('responsable', '')} | **Période :** {detail.get('date_debut', '')} au {detail.get('date_fin', '')}")
+            
+            # Formulaire de mise à jour rapide
             with st.form("update_or"):
-                new_statut = st.selectbox("Statut des travaux", ["En attente", "En cours", "Suspendu", "Terminé"], index=["En attente", "En cours", "Suspendu", "Terminé"].index(detail['statut']))
+                st.subheader("Mise à jour du Suivi")
+                
+                statuts_possibles = ["En attente", "En cours", "Suspendu", "Terminé"]
+                current_statut = detail.get('statut', 'En attente')
+                current_index = statuts_possibles.index(current_statut) if current_statut in statuts_possibles else 0
+                
+                new_statut = st.selectbox("Statut des travaux", statuts_possibles, index=current_index)
+                
                 col1, col2 = st.columns(2)
-                with col1: new_debut = st.date_input("Nouvelle date de début", value=pd.to_datetime(detail['date_debut']))
-                with col2: new_fin = st.date_input("Nouvelle date de fin prévue", value=pd.to_datetime(detail['date_fin']))
-                new_resp = st.text_input("Responsable", value=detail['responsable'])
-                if st.form_submit_button("Sauvegarder les modifications"):
-                    update_record('reparations', or_id, {"statut": new_statut, "date_debut": str(new_debut), "date_fin": str(new_fin), "responsable": new_resp})
-                    st.success("Ordre de réparation mis à jour !"); st.rerun()
-            if st.button("🗑️ Supprimer cet Ordre", type="secondary"):
+                with col1:
+                    # Sécurité sur la date
+                    current_date_debut = detail.get('date_debut', str(date.today()))
+                    new_debut = st.date_input("Nouvelle date de début", value=pd.to_datetime(current_date_debut))
+                with col2:
+                    current_date_fin = detail.get('date_fin', str(date.today()))
+                    new_fin = st.date_input("Nouvelle date de fin prévue", value=pd.to_datetime(current_date_fin))
+                
+                new_resp = st.text_input("Responsable", value=detail.get('responsable', ''))
+                
+                save = st.form_submit_button("Sauvegarder les modifications")
+                if save:
+                    # Mise à jour via JSONDB
+                    update_record('reparations', or_id, {
+                        "statut": new_statut,
+                        "date_debut": str(new_debut),
+                        "date_fin": str(new_fin),
+                        "responsable": new_resp
+                    })
+                    st.success("Ordre de réparation mis à jour !")
+                    st.rerun()
+                    
+            # Bouton Supprimer
+            st.markdown("---")
+            if st.button("🗑️ Supprimer cet Ordre de Réparation", type="secondary"):
                 delete_record('reparations', or_id)
-                st.warning("Ordre supprimé !"); st.rerun()
-        else: st.info("Aucun ordre de réparation à suivre.")
-
-def show_atelier():
-    st.title("🏭 Suivi Atelier - Progression des Travaux")
-    etapes_atelier = ["Réception", "Diagnostic", "Tôlerie", "Préparation", "Peinture", "Remontage", "Contrôle Qualité", "Livraison"]
-    tab1, tab2 = st.tabs(["🚜 Tableau de l'Atelier", "📊 Progression Détaillée"])
-    
-    with tab1:
-        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_o.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            st.dataframe(df[df['statut'] != 'Terminé'][['numero_or', 'immatriculation', 'marque', 'modele', 'Client', 'statut', 'responsable']], use_container_width=True, hide_index=True)
-        else: st.info("🎉 Aucun véhicule en cours de réparation dans l'atelier !")
-    
-    with tab2:
-        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_o.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            df = df[df['statut'] != 'Terminé']
-            if df.empty: st.info("Aucun véhicule à suivre.")
-            else:
-                df['display'] = df.apply(lambda r: f"{r['numero_or']} - {r['immatriculation']} ({r['Client']}) [ORID:{r['id_o']}]", axis=1)
-                or_choice = st.selectbox("Choisir un Ordre de Réparation à suivre", df['display'].tolist())
-                or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
-                
-                df_suivi = pd.DataFrame([s for s in get_all_records('suivi_atelier') if s['or_id'] == or_id])
-                if df_suivi.empty:
-                    create_record('suivi_atelier', {"or_id": or_id, "etape_actuelle": etapes_atelier[0], "progression": 12})
-                    df_suivi = pd.DataFrame([s for s in get_all_records('suivi_atelier') if s['or_id'] == or_id])
-                
-                suivi_data = df_suivi.iloc[0]
-                current_etape = suivi_data['etape_actuelle']
-                current_progress = int(suivi_data['progression'])
-                current_etape_index = etapes_atelier.index(current_etape) if current_etape in etapes_atelier else 0
-                
-                st.markdown("---")
-                cols = st.columns(len(etapes_atelier))
-                for i, etape in enumerate(etapes_atelier):
-                    with cols[i]:
-                        if i < current_etape_index: st.markdown(f"<div style='text-align: center; background-color: #d4edda; padding: 10px; border-radius: 5px; color: black;'><b>✅</b><br>{etape}</div>", unsafe_allow_html=True)
-                        elif i == current_etape_index: st.markdown(f"<div style='text-align: center; background-color: #cce5ff; padding: 10px; border-radius: 5px; color: black; border: 2px solid #1E3A8A;'><b>🔧</b><br><b>{etape}</b></div>", unsafe_allow_html=True)
-                        else: st.markdown(f"<div style='text-align: center; background-color: #f8f9fa; padding: 10px; border-radius: 5px; color: grey;'><b>⬜</b><br>{etape}</div>", unsafe_allow_html=True)
-                st.markdown("---")
-                
-                st.progress(current_progress / 100, text=f"Progression globale : {current_progress}%")
-                with st.form("update_etape"):
-                    new_etape = st.selectbox("Définir l'étape actuelle :", etapes_atelier, index=current_etape_index)
-                    if st.form_submit_button("Mettre à jour la progression"):
-                        new_etape_index = etapes_atelier.index(new_etape)
-                        new_progress = int((new_etape_index + 1) * (100 / len(etapes_atelier)))
-                        update_record('suivi_atelier', suivi_data['id'], {"etape_actuelle": new_etape, "progression": new_progress})
-                        if new_etape == "Livraison":
-                            update_record('reparations', or_id, {"statut": "Terminé"})
-                            st.balloons()
-                            st.success("🎉 Véhicule livré ! L'Ordre de Réparation est maintenant marqué comme TERMINÉ.")
-                        else: st.success(f"✅ Progression mise à jour : Étape **{new_etape}** ({new_progress}%)")
-                        st.rerun()
-        else: st.info("Aucun véhicule à suivre.")
-
+                st.warning("Ordre supprimé !")
+                st.rerun()
 def show_qr_dashboard(veh_id):
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO - Suivi Véhicule</h1>", unsafe_allow_html=True)
     veh_info = get_record('vehicules', veh_id)
