@@ -871,6 +871,149 @@ def show_ordres():
                 delete_record('reparations', or_id)
                 st.warning("Ordre supprimé !")
                 st.rerun()
+def show_atelier():
+    st.title("🏭 Suivi Atelier - Progression des Travaux")
+    
+    # Définition des étapes obligatoires du workflow garage
+    etapes_atelier = [
+        "Réception", 
+        "Diagnostic", 
+        "Tôlerie", 
+        "Préparation", 
+        "Peinture", 
+        "Remontage", 
+        "Contrôle Qualité", 
+        "Livraison"
+    ]
+    
+    tab1, tab2 = st.tabs(["🚜 Tableau de l'Atelier", "📊 Progression Détaillée"])
+    
+    # Récupération de tous les ordres de réparation
+    all_ordres = get_all_records('reparations')
+    
+    # Filtrer les OR non terminés pour l'atelier
+    active_ordres = [o for o in all_ordres if o.get('statut', '') != 'Terminé']
+    
+    # --- TAB 1 : TABLEAU DE L'ATELIER ---
+    with tab1:
+        if not active_ordres:
+            st.info("🎉 Aucun véhicule en cours de réparation dans l'atelier !")
+        else:
+            data_to_display = []
+            for o in active_ordres:
+                vehicule = get_record('vehicules', o.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                data_to_display.append({
+                    "N° OR": o.get('numero_or', ''),
+                    "Immatriculation": vehicule.get('immatriculation', '') if vehicule else '',
+                    "Marque": vehicule.get('marque', '') if vehicule else '',
+                    "Modèle": vehicule.get('modele', '') if vehicule else '',
+                    "Client": f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu',
+                    "Statut": o.get('statut', ''),
+                    "Responsable": o.get('responsable', '')
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+    
+    # --- TAB 2 : PROGRESSION DÉTAILLÉE ---
+    with tab2:
+        if not active_ordres:
+            st.info("Aucun véhicule à suivre pour le moment.")
+        else:
+            # Construction du menu déroulant sans Pandas merge
+            or_dict = []
+            for o in active_ordres:
+                vehicule = get_record('vehicules', o.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                
+                display = f"{o.get('numero_or', '')} - {immat} ({client_name}) [ORID:{o.get('id', '')}]"
+                or_dict.append(display)
+                
+            or_choice = st.selectbox("Choisir un Ordre de Réparation à suivre", or_dict)
+            or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
+            
+            # Récupérer ou créer les infos de suivi pour cet OR
+            all_suivi = get_all_records('suivi_atelier')
+            suivi_data = next((s for s in all_suivi if s.get('or_id') == or_id), None)
+            
+            # Si le véhicule n'a pas encore de suivi, on le crée à l'étape "Réception"
+            if suivi_data is None:
+                suivi_id = create_record('suivi_atelier', {
+                    "or_id": or_id,
+                    "etape_actuelle": etapes_atelier[0],
+                    "progression": 12
+                })
+                # Recharger le suivi créé
+                suivi_data = get_record('suivi_atelier', suivi_id)
+            
+            # Sécurité : vérifier si l'enregistrement existe
+            if suivi_data is None:
+                st.error("Erreur lors de la récupération du suivi atelier.")
+                return
+            
+            current_etape = suivi_data.get('etape_actuelle', etapes_atelier[0])
+            current_progress = int(suivi_data.get('progression', 0))
+            current_etape_index = etapes_atelier.index(current_etape) if current_etape in etapes_atelier else 0
+            
+            # Affichage visuel des étapes (Les colonnes avec les icônes)
+            st.markdown("---")
+            cols = st.columns(len(etapes_atelier))
+            
+            for i, etape in enumerate(etapes_atelier):
+                with cols[i]:
+                    if i < current_etape_index:
+                        # Etape terminée
+                        st.markdown(f"<div style='text-align: center; background-color: #d4edda; padding: 10px; border-radius: 5px; color: black;'><b>✅</b><br>{etape}</div>", unsafe_allow_html=True)
+                    elif i == current_etape_index:
+                        # Etape en cours
+                        st.markdown(f"<div style='text-align: center; background-color: #cce5ff; padding: 10px; border-radius: 5px; color: black; border: 2px solid #1E3A8A;'><b>🔧</b><br><b>{etape}</b></div>", unsafe_allow_html=True)
+                    else:
+                        # Etape à venir
+                        st.markdown(f"<div style='text-align: center; background-color: #f8f9fa; padding: 10px; border-radius: 5px; color: grey;'><b>⬜</b><br>{etape}</div>", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Barre de progression globale
+            st.progress(current_progress / 100, text=f"Progression globale : {current_progress}%")
+            
+            # Formulaire pour avancer le véhicule
+            st.subheader("🚀 Avancer le véhicule dans l'atelier")
+            
+            with st.form("update_etape"):
+                new_etape = st.selectbox(
+                    "Définir l'étape actuelle :", 
+                    etapes_atelier, 
+                    index=current_etape_index
+                )
+                
+                submitted = st.form_submit_button("Mettre à jour la progression")
+                if submitted:
+                    new_etape_index = etapes_atelier.index(new_etape)
+                    # Calcul du pourcentage : 8 étapes = 12.5% par étape (on arrondit)
+                    new_progress = int((new_etape_index + 1) * (100 / len(etapes_atelier)))
+                    
+                    # Mise à jour via JSONDB
+                    update_record('suivi_atelier', suivi_data.get('id'), {
+                        "etape_actuelle": new_etape,
+                        "progression": new_progress
+                    })
+                    
+                    # Si on passe à "Livraison", on termine automatiquement l'Ordre de Réparation
+                    if new_etape == "Livraison":
+                        update_record('reparations', or_id, {
+                            "statut": "Terminé"
+                        })
+                        st.balloons() # Petit effet visuel de réussite !
+                        st.success("🎉 Véhicule livré ! L'Ordre de Réparation est maintenant marqué comme TERMINÉ.")
+                    else:
+                        st.success(f"✅ Progression mise à jour : Étape **{new_etape}** ({new_progress}%)")
+                    
+                    st.rerun() # Rafraîchir la page pour voir les couleurs changer immédiatement                
 def show_qr_dashboard(veh_id):
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO - Suivi Véhicule</h1>", unsafe_allow_html=True)
     veh_info = get_record('vehicules', veh_id)
