@@ -116,12 +116,10 @@ def get_next_numero(entity_type):
     year = datetime.now().year
     if entity_type == "devis":
         counters["dernier_devis"] += 1
-        num = counters["dernier_devis"]
-        prefix = f"DEV-{year}-{num:04d}"
+        prefix = f"DEV-{year}-{counters['dernier_devis']:04d}"
     elif entity_type == "facture":
         counters["derniere_facture"] += 1
-        num = counters["derniere_facture"]
-        prefix = f"FAC-{year}-{num:04d}"
+        prefix = f"FAC-{year}-{counters['derniere_facture']:04d}"
     else:
         return "NUM-0000"
     save_data("counters", counters)
@@ -151,42 +149,33 @@ st.markdown("""
     
     /* === SIDEBAR BLANC CASSÉ === */
     [data-testid="stSidebar"] {
-        background: #F8FAFC; /* Blanc cassé */
-        color: #1E293B;
-        border-right: 1px solid #E2E8F0;
+        background: #F8FAFC; color: #1E293B; border-right: 1px solid #E2E8F0;
     }
     [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
-        color: #334155 !important; /* Texte gris foncé pour le menu */
+        color: #334155 !important;
     }
-    [data-testid="stSidebar"] hr {
-        border-color: #E2E8F0;
-    }
+    [data-testid="stSidebar"] hr { border-color: #E2E8F0; }
     [data-testid="stSidebar"] [role="radiogroup"] { gap: 8px; width: 100%; }
     [data-testid="stSidebar"] [role="radio"] {
         padding: 12px 16px; border-radius: 8px; border: 1px solid #E2E8F0;
         background-color: #FFFFFF; transition: all 0.3s ease; display: flex; align-items: center; color: #475569;
     }
-    [data-testid="stSidebar"] [role="radio"]:hover {
-        background-color: #F1F5F9; border-color: #CBD5E1;
-    }
+    [data-testid="stSidebar"] [role="radio"]:hover { background-color: #F1F5F9; border-color: #CBD5E1; }
     [data-testid="stSidebar"] [role="radio"][aria-checked="true"] {
         background-color: #1E3A8A; border-color: #1E3A8A; color: #FFFFFF !important;
         box-shadow: 0 4px 6px rgba(30, 58, 138, 0.2); font-weight: 600;
     }
     [data-testid="stSidebar"] [role="radio"][aria-checked="true"] svg { fill: white; }
 
-    /* Boutons */
     .stButton>button { background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: 600; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(30, 58, 138, 0.2); width: 100%; }
     .stButton>button:hover { transform: translateY(-1px); box-shadow: 0 6px 12px rgba(30, 58, 138, 0.3); color: white; }
     .stButton>button[kind="secondary"] { background: #F1F5F9; color: #1E293B; border: 1px solid #E2E8F0; box-shadow: none; }
     
-    /* KPI Cards */
     .kpi-card { background-color: var(--card-bg); border-radius: var(--border-radius); padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid var(--primary-color); transition: transform 0.2s, box-shadow 0.2s; }
     .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
     .kpi-card h3 { color: #64748B; font-size: 1.1rem; font-weight: 500; margin-bottom: 0.5rem; }
     .kpi-card h1 { color: var(--primary-color); font-size: 2.5rem; font-weight: 800; margin: 0; }
     
-    /* Tabs */
     .stTabs [data-baseweb="tab-list"] { gap: 4px; background-color: #F1F5F9; padding: 6px; border-radius: 12px; }
     .stTabs [data-baseweb="tab"] { padding: 10px 20px; border-radius: 8px; color: #64748B; font-weight: 600; }
     .stTabs [aria-selected="true"] { background-color: var(--card-bg); color: var(--primary-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -268,24 +257,18 @@ def show_clients():
     
     with tab1:
         df = get_df('clients')
-        if not df.empty:
-            st.dataframe(df[['id', 'nom', 'prenom', 'telephone', 'email', 'ville']], use_container_width=True, hide_index=True)
+        if not df.empty: st.dataframe(df[['id', 'nom', 'prenom', 'telephone', 'email', 'ville']], use_container_width=True, hide_index=True)
         else: st.info("Aucun client enregistré.")
 
     with tab2:
         with st.form("ajout_client"):
             col1, col2 = st.columns(2)
             with col1:
-                nom = st.text_input("Nom *")
-                prenom = st.text_input("Prénom *")
-                telephone = st.text_input("Téléphone *")
+                nom = st.text_input("Nom *"); prenom = st.text_input("Prénom *"); telephone = st.text_input("Téléphone *")
             with col2:
-                telephone2 = st.text_input("Téléphone secondaire")
-                email = st.text_input("Email")
-                ville = st.text_input("Ville")
+                telephone2 = st.text_input("Téléphone secondaire"); email = st.text_input("Email"); ville = st.text_input("Ville")
             adresse = st.text_area("Adresse")
-            submitted = st.form_submit_button("Enregistrer le client")
-            if submitted:
+            if st.form_submit_button("Enregistrer le client"):
                 if nom and prenom and telephone:
                     create_record('clients', {"nom": nom, "prenom": prenom, "telephone": telephone, "telephone2": telephone2, "email": email, "adresse": adresse, "ville": ville, "date_creation": str(date.today())})
                     st.success(f"Client {nom} {prenom} ajouté avec succès !")
@@ -304,8 +287,7 @@ def show_clients():
                     m_nom = st.text_input("Nom", value=client_data['nom'])
                     m_prenom = st.text_input("Prénom", value=client_data['prenom'])
                     m_tel = st.text_input("Téléphone", value=client_data['telephone'])
-                    save = st.form_submit_button("Sauvegarder modifications")
-                    if save:
+                    if st.form_submit_button("Sauvegarder modifications"):
                         update_record('clients', client_id, {"nom": m_nom, "prenom": m_prenom, "telephone": m_tel})
                         st.success("Client modifié !"); st.rerun()
                 if st.button("🗑️ Supprimer ce client", type="secondary"):
@@ -318,8 +300,7 @@ def show_vehicules():
     tab1, tab2 = st.tabs(["📋 Liste", "➕ Ajouter"])
     
     with tab1:
-        df_v = get_df('vehicules')
-        df_c = get_df('clients')
+        df_v = get_df('vehicules'); df_c = get_df('clients')
         if not df_v.empty and not df_c.empty:
             df = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
             df['Propriétaire'] = df['nom_c'] + ' ' + df['prenom_c']
@@ -337,21 +318,150 @@ def show_vehicules():
             with st.form("ajout_vehicule"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    immat = st.text_input("Immatriculation *")
-                    vin = st.text_input("VIN (Numéro de châssis)")
-                    marque = st.text_input("Marque *")
-                    modele = st.text_input("Modèle *")
+                    immat = st.text_input("Immatriculation *"); vin = st.text_input("VIN"); marque = st.text_input("Marque *"); modele = st.text_input("Modèle *")
                 with col2:
-                    annee = st.number_input("Année", min_value=1900, max_value=2025, value=2020)
-                    couleur = st.text_input("Couleur")
-                    kilometrage = st.number_input("Kilométrage", min_value=0)
-                    carburant = st.selectbox("Carburant", ["Diesel", "Essence", "Hybride", "Electrique", "GPL"])
-                submitted = st.form_submit_button("Enregistrer le véhicule")
-                if submitted:
+                    annee = st.number_input("Année", min_value=1900, max_value=2025, value=2020); couleur = st.text_input("Couleur")
+                    kilometrage = st.number_input("Kilométrage", min_value=0); carburant = st.selectbox("Carburant", ["Diesel", "Essence", "Hybride", "Electrique", "GPL"])
+                if st.form_submit_button("Enregistrer le véhicule"):
                     if immat and marque and modele:
                         create_record('vehicules', {"client_id": client_id, "immatriculation": immat, "vin": vin, "marque": marque, "modele": modele, "annee": int(annee), "couleur": couleur, "kilometrage": int(kilometrage), "carburant": carburant})
                         st.success(f"Véhicule {immat} ajouté avec succès !")
                     else: st.error("Immatriculation, Marque et Modèle sont obligatoires.")
+
+def show_reception():
+    st.title("📥 Réception Véhicule")
+    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Nouvelle Réception", "🔍 Détails / Modifier"])
+    
+    with tab1:
+        df_r = get_df('reception'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_r.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_r, df_v, left_on='vehicule_id', right_on='id', suffixes=('_r', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            st.dataframe(df[['date_entree', 'immatriculation', 'marque', 'Client', 'observations']], use_container_width=True, hide_index=True)
+        else: st.info("Aucune réception enregistrée.")
+
+    with tab2:
+        df_v = get_df('vehicules'); df_c = get_df('clients')
+        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de faire une réception !")
+        else:
+            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
+            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']}) [ID:{r['id_v']}]", axis=1)
+            veh_choice = st.selectbox("Véhicule reçu", df_veh['display'].tolist())
+            veh_id = int(veh_choice.split("[ID:")[1].replace("]", ""))
+            
+            with st.form("new_reception"):
+                col1, col2 = st.columns(2)
+                with col1: date_entree = st.date_input("Date d'entrée *"); kilometrage = st.number_input("Kilométrage à l'entrée", min_value=0, step=1)
+                with col2: niveau_carburant = st.selectbox("Niveau carburant", ["Plein", "3/4", "1/2", "1/4", "Vide", "Inconnu"])
+                observations = st.text_area("Observations / Description du problème")
+                
+                col3, col4, col5 = st.columns(3)
+                with col3: roue_secours = st.checkbox("Roue de secours"); cric = st.checkbox("Cric")
+                with col4: radio = st.checkbox("Radio / Autoradio"); documents = st.checkbox("Documents (CG, Assurance)")
+                with col5: clees = st.checkbox("Clés (doublon)")
+                
+                signature_check = st.checkbox("Le client confirme la remise du véhicule et la véracité de la checklist")
+                signature_nom = st.text_input("Nom et Prénom du signataire (si checkbox coché)")
+                
+                if st.form_submit_button("📥 Enregistrer la Réception"):
+                    if date_entree and signature_check and signature_nom:
+                        create_record('reception', {"vehicule_id": veh_id, "date_entree": str(date_entree), "kilometrage": int(kilometrage), "niveau_carburant": niveau_carburant, "observations": observations, "roue_secours": int(roue_secours), "cric": int(cric), "radio": int(radio), "documents": int(documents), "clees": int(clees), "signature_client": signature_nom})
+                        st.success("✅ Fiche de réception enregistrée avec succès !")
+                    else: st.error("❌ La date, la confirmation de signature et le nom du signataire sont obligatoires.")
+
+    with tab3:
+        df_r = get_df('reception'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_r.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_r, df_v, left_on='vehicule_id', right_on='id', suffixes=('_r', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            df['display'] = df.apply(lambda r: f"{r['date_entree']} - {r['immatriculation']} ({r['Client']}) [ID:{r['id_r']}]", axis=1)
+            recep_choice = st.selectbox("Choisir une fiche de réception", df['display'].tolist())
+            recep_id = int(recep_choice.split("[ID:")[1].replace("]", ""))
+            detail = get_record('reception', recep_id)
+            
+            st.write(f"**Véhicule ID:** {detail['vehicule_id']} | **Date entrée:** {detail['date_entree']}")
+            st.write(f"**Kilométrage:** {detail['kilometrage']} km | **Carburant:** {detail['niveau_carburant']}")
+            st.write(f"**Observations:** {detail['observations']}")
+            st.markdown("---")
+            checklist_items = {"Roue de secours": detail['roue_secours'], "Cric": detail['cric'], "Radio": detail['radio'], "Documents": detail['documents'], "Clés": detail['clees']}
+            for item, val in checklist_items.items():
+                st.write(f"{'✅' if val else '❌'} {item}")
+            st.write(f"**Signataire :** {detail['signature_client']}")
+            
+            with st.expander("🔧 Modifier ou Supprimer cette fiche"):
+                with st.form("modif_reception"):
+                    m_obs = st.text_area("Observations", value=detail['observations'])
+                    m_km = st.number_input("Kilométrage", value=int(detail['kilometrage']))
+                    m_roue = st.checkbox("Roue de secours", value=bool(detail['roue_secours']))
+                    m_cric = st.checkbox("Cric", value=bool(detail['cric']))
+                    m_radio = st.checkbox("Radio", value=bool(detail['radio']))
+                    m_docs = st.checkbox("Documents", value=bool(detail['documents']))
+                    m_clees = st.checkbox("Clés", value=bool(detail['clees']))
+                    if st.form_submit_button("Sauvegarder modifications"):
+                        update_record('reception', recep_id, {"observations": m_obs, "kilometrage": int(m_km), "roue_secours": int(m_roue), "cric": int(m_cric), "radio": int(m_radio), "documents": int(m_docs), "clees": int(m_clees)})
+                        st.success("Fiche modifiée !"); st.rerun()
+                if st.button("🗑️ Supprimer cette fiche", type="secondary"):
+                    delete_record('reception', recep_id)
+                    st.warning("Fiche supprimée !"); st.rerun()
+        else: st.info("Aucune réception à modifier.")
+
+def show_sinistres():
+    st.title("🛡️ Sinistres & Assurances")
+    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Nouveau Sinistre", "🔍 Détails / Modifier"])
+    
+    with tab1:
+        df_s = get_df('assurances'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_s.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_s, df_v, left_on='vehicule_id', right_on='id', suffixes=('_s', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            st.dataframe(df[['numero_dossier', 'compagnie', 'immatriculation', 'Client', 'date_expertise', 'montant_valide']], use_container_width=True, hide_index=True)
+        else: st.info("Aucun sinistre d'assurance enregistré.")
+
+    with tab2:
+        df_v = get_df('vehicules'); df_c = get_df('clients')
+        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un sinistre !")
+        else:
+            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
+            df_veh['Client'] = df_veh['nom_c'] + ' ' + df_veh['prenom_c']
+            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['Client']} [VehID:{r['id_v']}]", axis=1)
+            
+            with st.form("new_sinistre"):
+                veh_choice = st.selectbox("Véhicule concerné *", df_veh['display'].tolist())
+                veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+                col1, col2 = st.columns(2)
+                with col1: compagnie = st.text_input("Compagnie d'assurance *"); numero_dossier = st.text_input("N° Dossier *"); expert = st.text_input("Nom de l'Expert")
+                with col2: date_expertise = st.date_input("Date de l'expertise *"); montant_valide = st.number_input("Montant validé (€)", min_value=0.0, format="%.2f")
+                commentaires = st.text_area("Commentaires")
+                if st.form_submit_button("🛡️ Créer le Sinistre"):
+                    if compagnie and numero_dossier and date_expertise:
+                        create_record('assurances', {"vehicule_id": veh_id, "compagnie": compagnie, "numero_dossier": numero_dossier, "expert": expert, "date_expertise": str(date_expertise), "montant_valide": float(montant_valide), "commentaires": commentaires})
+                        st.success(f"✅ Dossier sinistre {numero_dossier} créé avec succès !")
+                    else: st.error("❌ La Compagnie, le N° Dossier et la Date sont obligatoires.")
+
+    with tab3:
+        df_s = get_df('assurances'); df_v = get_df('vehicules')
+        if not df_s.empty and not df_v.empty:
+            df = pd.merge(df_s, df_v, left_on='vehicule_id', right_on='id', suffixes=('_s', '_v'))
+            df['display'] = df.apply(lambda r: f"{r['numero_dossier']} - {r['compagnie']} ({r['immatriculation']}) [SinID:{r['id_s']}]", axis=1)
+            sin_choice = st.selectbox("Choisir un sinistre", df['display'].tolist())
+            sin_id = int(sin_choice.split("[SinID:")[1].replace("]", ""))
+            detail = get_record('assurances', sin_id)
+            
+            with st.form("modif_sinistre"):
+                col1, col2 = st.columns(2)
+                with col1: m_compagnie = st.text_input("Compagnie *", value=detail['compagnie']); m_dossier = st.text_input("N° Dossier *", value=detail['numero_dossier']); m_expert = st.text_input("Expert", value=detail.get('expert', ''))
+                with col2: m_date = st.date_input("Date expertise", value=pd.to_datetime(detail['date_expertise'])); m_montant = st.number_input("Montant validé (€)", min_value=0.0, format="%.2f", value=float(detail.get('montant_valide', 0.0)))
+                m_comments = st.text_area("Commentaires", value=detail.get('commentaires', ''))
+                if st.form_submit_button("💾 Sauvegarder"):
+                    update_record('assurances', sin_id, {"compagnie": m_compagnie, "numero_dossier": m_dossier, "expert": m_expert, "date_expertise": str(m_date), "montant_valide": float(m_montant), "commentaires": m_comments})
+                    st.success("✅ Sinistre mis à jour !"); st.rerun()
+            if st.button(f"🗑️ Supprimer le sinistre {detail['numero_dossier']}", type="secondary"):
+                delete_record('assurances', sin_id)
+                st.success("Sinistre supprimé !"); st.rerun()
+        else: st.info("Aucun sinistre à modifier.")
 
 def generate_devis_pdf(devis_info, client_info, vehicule_info, details):
     if not os.path.exists("pdf"): os.makedirs("pdf")
@@ -398,9 +508,7 @@ def show_devis():
     tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Créer", "🔍 Voir / PDF / Modifier"])
     
     with tab1:
-        df_d = get_df('devis')
-        df_v = get_df('vehicules')
-        df_c = get_df('clients')
+        df_d = get_df('devis'); df_v = get_df('vehicules'); df_c = get_df('clients')
         if not df_d.empty:
             df = pd.merge(df_d, df_v, left_on='vehicule_id', right_on='id', suffixes=('_d', '_v'))
             df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
@@ -409,8 +517,7 @@ def show_devis():
         else: st.info("Aucun devis créé pour le moment.")
 
     with tab2:
-        df_v = get_df('vehicules')
-        df_c = get_df('clients')
+        df_v = get_df('vehicules'); df_c = get_df('clients')
         if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un devis !")
         else:
             df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
@@ -424,8 +531,7 @@ def show_devis():
                 with col_num: numero_devis = st.text_input("N° Devis", value=get_next_numero('devis'))
                 with col_statut: statut = st.selectbox("Statut", ["En attente", "Validé", "Refusé"])
                 
-                st.markdown("---")
-                st.subheader("🔧 Main d'œuvre")
+                st.markdown("---"); st.subheader("🔧 Main d'œuvre")
                 mo_details_list = []
                 for task in ["Débosselage", "Redressage", "Soudure", "Préparation", "Peinture", "Polissage"]:
                     col1, col2, col3 = st.columns(3)
@@ -434,8 +540,7 @@ def show_devis():
                     with col3: st.write(f"Total: **{h * p:.2f} dzd**")
                     mo_details_list.append({"desc": task, "qty": h, "price": p, "total": h * p})
                 
-                st.markdown("---")
-                st.subheader("🔩 Pièces et Fournitures")
+                st.markdown("---"); st.subheader("🔩 Pièces et Fournitures")
                 pieces_details_list = []
                 for i in range(5):
                     col1, col2, col3, col4 = st.columns(4)
@@ -445,19 +550,11 @@ def show_devis():
                     with col4: px = st.number_input(f"Prix Pièce {i+1}", min_value=0.0, format="%.2f", key=f"p_px_{i}")
                     if qty > 0 and des: pieces_details_list.append({"ref": ref, "desc": des, "qty": int(qty), "price": px, "total": qty * px})
                 
-                submitted = st.form_submit_button("📊 Calculer et Sauvegarder le Devis")
-                if submitted:
+                if st.form_submit_button("📊 Calculer et Sauvegarder le Devis"):
                     total_mo = sum(item['total'] for item in mo_details_list)
                     total_pieces = sum(item['total'] for item in pieces_details_list)
-                    total_ht = total_mo + total_pieces
-                    tva = total_ht * 0.20
-                    total_ttc = total_ht + tva
-                    
-                    create_record('devis', {
-                        "vehicule_id": veh_id, "numero_devis": numero_devis, "date_creation": str(date_creation),
-                        "statut": statut, "total_pieces": total_pieces, "total_mo": total_mo, "tva": tva,
-                        "total_ttc": total_ttc, "details": {"mo": mo_details_list, "pieces": pieces_details_list}
-                    })
+                    total_ht = total_mo + total_pieces; tva = total_ht * 0.20; total_ttc = total_ht + tva
+                    create_record('devis', {"vehicule_id": veh_id, "numero_devis": numero_devis, "date_creation": str(date_creation), "statut": statut, "total_pieces": total_pieces, "total_mo": total_mo, "tva": tva, "total_ttc": total_ttc, "details": {"mo": mo_details_list, "pieces": pieces_details_list}})
                     st.success(f"✅ Devis {numero_devis} sauvegardé ! Total TTC : {total_ttc:.2f} dzd")
 
     with tab3:
@@ -482,12 +579,147 @@ def show_devis():
                     st.success("Statut mis à jour !"); st.rerun()
         else: st.info("Aucun devis à afficher pour le moment.")
 
+def show_ordres():
+    st.title("🔧 Ordres de Réparation (OR)")
+    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Créer", "🔍 Suivi / Modifier"])
+    
+    with tab1:
+        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_o.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            def statut_icon(val): return "⏳ En attente" if val=="En attente" else "🔄 En cours" if val=="En cours" else "⏸️ Suspendu" if val=="Suspendu" else "✅ Terminé" if val=="Terminé" else val
+            df['statut'] = df['statut'].apply(statut_icon)
+            st.dataframe(df[['numero_or', 'immatriculation', 'Client', 'responsable', 'statut', 'date_debut', 'date_fin']], use_container_width=True, hide_index=True)
+        else: st.info("Aucun ordre de réparation créé pour le moment.")
+
+    with tab2:
+        df_v = get_df('vehicules'); df_c = get_df('clients'); df_d = get_df('devis')
+        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un OR !")
+        else:
+            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
+            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']} {r['prenom_c']}) [VehID:{r['id_v']}]", axis=1)
+            veh_choice = st.selectbox("Véhicule concerné", df_veh['display'].tolist())
+            veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+            
+            df_devis_filtered = df_d[df_d['vehicule_id'] == veh_id]
+            devis_options = ["Aucun devis (Travaux internes)"]
+            if not df_devis_filtered.empty:
+                devis_dict_filtered = df_devis_filtered.apply(lambda r: f"{r['numero_devis']} - {r['statut']} ({r['total_ttc']}dzd) [DevisID:{r['id']}]", axis=1).tolist()
+                devis_options.extend(devis_dict_filtered)
+            devis_choice = st.selectbox("Associer à un Devis ?", devis_options)
+            devis_id = None if devis_choice == "Aucun devis (Travaux internes)" else int(devis_choice.split("[DevisID:")[1].replace("]", ""))
+            
+            with st.form("new_or"):
+                last_id_or = max([o['id'] for o in get_all_records('reparations')], default=0)
+                col1, col2, col3 = st.columns(3)
+                with col1: numero_or = st.text_input("N° Ordre de Réparation *", value=f"OR-{last_id_or+1:04d}"); responsable = st.text_input("Responsable *")
+                with col2: date_debut = st.date_input("Date de début *")
+                with col3: date_fin = st.date_input("Date de fin *")
+                statut = st.selectbox("Statut initial", ["En attente", "En cours", "Suspendu", "Terminé"])
+                if st.form_submit_button("🛠️ Créer l'Ordre de Réparation"):
+                    if numero_or and responsable and date_debut and date_fin:
+                        if str(date_fin) < str(date_debut): st.error("❌ La date de fin prévue doit être après la date de début !")
+                        else:
+                            create_record('reparations', {"devis_id": devis_id, "vehicule_id": veh_id, "numero_or": numero_or, "responsable": responsable, "date_debut": str(date_debut), "date_fin": str(date_fin), "statut": statut})
+                            st.success(f"✅ Ordre de Réparation {numero_or} créé avec succès !")
+                    else: st.error("❌ Le numéro, le responsable et les dates sont obligatoires.")
+
+    with tab3:
+        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_o.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            df['display'] = df.apply(lambda r: f"{r['numero_or']} - {r['Client']} ({r['immatriculation']}) Statut: {r['statut']} [ORID:{r['id_o']}]", axis=1)
+            or_choice = st.selectbox("Choisir un Ordre de Réparation", df['display'].tolist())
+            or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
+            detail = get_record('reparations', or_id)
+            
+            st.write(f"### Ordre N° {detail['numero_or']}")
+            st.write(f"**Responsable :** {detail['responsable']} | **Période :** {detail['date_debut']} au {detail['date_fin']}")
+            
+            with st.form("update_or"):
+                new_statut = st.selectbox("Statut des travaux", ["En attente", "En cours", "Suspendu", "Terminé"], index=["En attente", "En cours", "Suspendu", "Terminé"].index(detail['statut']))
+                col1, col2 = st.columns(2)
+                with col1: new_debut = st.date_input("Nouvelle date de début", value=pd.to_datetime(detail['date_debut']))
+                with col2: new_fin = st.date_input("Nouvelle date de fin prévue", value=pd.to_datetime(detail['date_fin']))
+                new_resp = st.text_input("Responsable", value=detail['responsable'])
+                if st.form_submit_button("Sauvegarder les modifications"):
+                    update_record('reparations', or_id, {"statut": new_statut, "date_debut": str(new_debut), "date_fin": str(new_fin), "responsable": new_resp})
+                    st.success("Ordre de réparation mis à jour !"); st.rerun()
+            if st.button("🗑️ Supprimer cet Ordre", type="secondary"):
+                delete_record('reparations', or_id)
+                st.warning("Ordre supprimé !"); st.rerun()
+        else: st.info("Aucun ordre de réparation à suivre.")
+
+def show_atelier():
+    st.title("🏭 Suivi Atelier - Progression des Travaux")
+    etapes_atelier = ["Réception", "Diagnostic", "Tôlerie", "Préparation", "Peinture", "Remontage", "Contrôle Qualité", "Livraison"]
+    tab1, tab2 = st.tabs(["🚜 Tableau de l'Atelier", "📊 Progression Détaillée"])
+    
+    with tab1:
+        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_o.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            st.dataframe(df[df['statut'] != 'Terminé'][['numero_or', 'immatriculation', 'marque', 'modele', 'Client', 'statut', 'responsable']], use_container_width=True, hide_index=True)
+        else: st.info("🎉 Aucun véhicule en cours de réparation dans l'atelier !")
+    
+    with tab2:
+        df_o = get_df('reparations'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_o.empty and not df_v.empty and not df_c.empty:
+            df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            df = df[df['statut'] != 'Terminé']
+            if df.empty: st.info("Aucun véhicule à suivre.")
+            else:
+                df['display'] = df.apply(lambda r: f"{r['numero_or']} - {r['immatriculation']} ({r['Client']}) [ORID:{r['id_o']}]", axis=1)
+                or_choice = st.selectbox("Choisir un Ordre de Réparation à suivre", df['display'].tolist())
+                or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
+                
+                df_suivi = pd.DataFrame([s for s in get_all_records('suivi_atelier') if s['or_id'] == or_id])
+                if df_suivi.empty:
+                    create_record('suivi_atelier', {"or_id": or_id, "etape_actuelle": etapes_atelier[0], "progression": 12})
+                    df_suivi = pd.DataFrame([s for s in get_all_records('suivi_atelier') if s['or_id'] == or_id])
+                
+                suivi_data = df_suivi.iloc[0]
+                current_etape = suivi_data['etape_actuelle']
+                current_progress = int(suivi_data['progression'])
+                current_etape_index = etapes_atelier.index(current_etape) if current_etape in etapes_atelier else 0
+                
+                st.markdown("---")
+                cols = st.columns(len(etapes_atelier))
+                for i, etape in enumerate(etapes_atelier):
+                    with cols[i]:
+                        if i < current_etape_index: st.markdown(f"<div style='text-align: center; background-color: #d4edda; padding: 10px; border-radius: 5px; color: black;'><b>✅</b><br>{etape}</div>", unsafe_allow_html=True)
+                        elif i == current_etape_index: st.markdown(f"<div style='text-align: center; background-color: #cce5ff; padding: 10px; border-radius: 5px; color: black; border: 2px solid #1E3A8A;'><b>🔧</b><br><b>{etape}</b></div>", unsafe_allow_html=True)
+                        else: st.markdown(f"<div style='text-align: center; background-color: #f8f9fa; padding: 10px; border-radius: 5px; color: grey;'><b>⬜</b><br>{etape}</div>", unsafe_allow_html=True)
+                st.markdown("---")
+                
+                st.progress(current_progress / 100, text=f"Progression globale : {current_progress}%")
+                with st.form("update_etape"):
+                    new_etape = st.selectbox("Définir l'étape actuelle :", etapes_atelier, index=current_etape_index)
+                    if st.form_submit_button("Mettre à jour la progression"):
+                        new_etape_index = etapes_atelier.index(new_etape)
+                        new_progress = int((new_etape_index + 1) * (100 / len(etapes_atelier)))
+                        update_record('suivi_atelier', suivi_data['id'], {"etape_actuelle": new_etape, "progression": new_progress})
+                        if new_etape == "Livraison":
+                            update_record('reparations', or_id, {"statut": "Terminé"})
+                            st.balloons()
+                            st.success("🎉 Véhicule livré ! L'Ordre de Réparation est maintenant marqué comme TERMINÉ.")
+                        else: st.success(f"✅ Progression mise à jour : Étape **{new_etape}** ({new_progress}%)")
+                        st.rerun()
+        else: st.info("Aucun véhicule à suivre.")
+
 def show_qr_dashboard(veh_id):
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO - Suivi Véhicule</h1>", unsafe_allow_html=True)
     veh_info = get_record('vehicules', veh_id)
     if not veh_info: st.error("Véhicule introuvable."); return
     client_info = get_record('clients', veh_info['client_id'])
-    
     st.markdown(f"<h3 style='text-align: center;'>{client_info['nom']} - {veh_info['marque']} {veh_info['modele']} ({veh_info['immatriculation']})</h3>", unsafe_allow_html=True)
     st.markdown("---")
     st.subheader("🏭 Statut des Travaux")
@@ -502,8 +734,7 @@ def show_qrcode():
     st.title("📱 Génération de QR Code Client")
     st.info("Génère un QR Code unique pour chaque véhicule.")
     app_base_url = st.text_input("URL de base de l'application", "http://localhost:8501")
-    df_vehicules = get_df('vehicules')
-    df_clients = get_df('clients')
+    df_vehicules = get_df('vehicules'); df_clients = get_df('clients')
     if not df_vehicules.empty and not df_clients.empty:
         df_veh = pd.merge(df_vehicules, df_clients, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
         df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} ({r['nom_c']}) [VehID:{r['id_v']}]", axis=1)
@@ -511,7 +742,6 @@ def show_qrcode():
         veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
         qr_url = f"{app_base_url}?veh_id={veh_id}"
         st.code(qr_url)
-        
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
         qr.add_data(qr_url); qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
@@ -550,10 +780,8 @@ def show_users():
             user_choice = st.selectbox("Choisir un utilisateur", user_dict)
             user_id = int(user_choice.split("[ID:")[1].replace("]", ""))
             detail = get_record('utilisateurs', user_id)
-            
             with st.form("modif_user"):
-                m_nom = st.text_input("Nom", value=detail['nom'])
-                m_pseudo = st.text_input("Pseudo", value=detail['username'])
+                m_nom = st.text_input("Nom", value=detail['nom']); m_pseudo = st.text_input("Pseudo", value=detail['username'])
                 m_mdp = st.text_input("Nouveau Mot de passe (laisser vide si inchangé)", type="password")
                 m_role = st.selectbox("Rôle", ["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"], index=["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"].index(detail['role']))
                 if st.form_submit_button("💾 Sauvegarder"):
@@ -561,7 +789,6 @@ def show_users():
                     if m_mdp: updates["password_hash"] = hashlib.sha256(m_mdp.encode()).hexdigest()
                     update_record('utilisateurs', user_id, updates)
                     st.success("✅ Utilisateur modifié !"); st.rerun()
-            
             if st.button(f"🗑️ Supprimer {detail['nom']}", type="secondary"):
                 delete_record('utilisateurs', user_id)
                 st.success("Utilisateur supprimé !"); st.rerun()
@@ -576,6 +803,10 @@ else:
     if module_name == "dashboard": show_dashboard()
     elif module_name == "clients": show_clients()
     elif module_name == "vehicules": show_vehicules()
+    elif module_name == "reception": show_reception()
+    elif module_name == "sinistres": show_sinistres()
     elif module_name == "devis": show_devis()
+    elif module_name == "ordres": show_ordres()
+    elif module_name == "atelier": show_atelier()
     elif module_name == "qrcode": show_qrcode()
     elif module_name == "users": show_users()
