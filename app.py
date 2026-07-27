@@ -15,8 +15,71 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 import qrcode
-import json
-import os
+
+# --- 1. CONFIGURATION DE LA PAGE ---
+st.set_page_config(
+    page_title="LNS GARAGE PRO",
+    page_icon="🚗",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- 2. CSS : THÈME BLEU NUIT, BLEU CIEL, GRIS, BLANC ---
+st.markdown("""
+<style>
+    /* FOND PRINCIPAL : BLEU NUIT */
+    .stApp {
+        background-color: #0F172A; 
+    }
+
+    /* MENU GAUCHE : BLEU NUIT PLUS FONCÉ + ECRITURE BLANCHE */
+    [data-testid="stSidebar"] {
+        background-color: #020617;
+    }
+    [data-testid="stSidebar"] .stMarkdown, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] p {
+        color: #FFFFFF !important; 
+    }
+
+    /* TOUT LE TEXTE EN BLANC */
+    h1, h2, h3, p, span, li, div {
+        color: #FFFFFF !important;
+    }
+    h3, h4 {
+        color: #94A3B8 !important; /* Sous-titres en GRIS */
+    }
+
+    /* BOUTONS : BLEU CIEL */
+    .stButton > button {
+        background-color: #38BDF8; 
+        color: #0F172A; 
+        border-radius: 8px;
+        font-weight: bold;
+    }
+    .stButton > button:hover {
+        background-color: #0EA5E9; 
+        color: #FFFFFF; 
+    }
+
+    /* CARTES STATISTIQUES : FOND GRIS + BORDURE BLEU CIEL */
+    .kpi-card {
+        background-color: #1E293B; 
+        border-left: 5px solid #38BDF8; 
+        border-radius: 10px;
+        padding: 25px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        text-align: center;
+    }
+    .kpi-card h3 {
+        color: #94A3B8 !important; 
+    }
+    .kpi-card h1 {
+        color: #FFFFFF !important; 
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- GESTIONNAIRE DE BASE DE DONNÉES JSON (JSONDB) ---
 class JsonDB:
     def __init__(self, filepath="lns_garage_data.jsondb"):
