@@ -1,6 +1,6 @@
 # ==========================================
 # LNS GARAGE PRO - APPLICATION COMPLÈTE
-# Design ERP Premium & JSONDB
+# Design ERP Premium & JSONDB (Fichier Unique)
 # ==========================================
 
 import streamlit as st
@@ -9,6 +9,7 @@ import plotly.express as px
 import os
 import json
 import hashlib
+import shutil
 from datetime import date, datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -20,183 +21,161 @@ from PIL import Image
 import io
 import time
 
-# Importation du moteur JSONDB
-from database import json_db as db
+# ==========================================
+# 1. MOTEUR BASE DE DONNÉES JSONDB INTÉGRÉ
+# ==========================================
+DB_DIR = "database"
+BACKUP_DIR = os.path.join(DB_DIR, "backups")
 
-# --- 1. CONFIGURATION DE LA PAGE ---
+SCHEMA = {
+    "clients": [], "vehicules": [], "devis": [], "factures": [], "reparations": [],
+    "stock": [], "accessoires": [], "pieces": [], "assurances": [], "paiements": [],
+    "fournisseurs": [], "utilisateurs": [], "parametres": {},
+    "counters": {
+        "dernier_client": 0, "dernier_vehicule": 0, "dernier_devis": 0,
+        "derniere_facture": 0, "dernier_reparation": 0
+    },
+    "reception": [], "suivi_atelier": [], "achats": [], "employes": [], "photos": [], "documents": []
+}
+
+def init_db():
+    os.makedirs(DB_DIR, exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    for entity, default in SCHEMA.items():
+        path = os.path.join(DB_DIR, f"{entity}.json")
+        if not os.path.exists(path):
+            _save_raw(entity, default)
+    users = load_data("utilisateurs")
+    if not any(u.get("role") == "Administrateur" for u in users):
+        hashed_pw = hashlib.sha256("admin123".encode()).hexdigest()
+        create_record("utilisateurs", {"nom": "Admin LNS", "username": "admin", "password_hash": hashed_pw, "role": "Administrateur"})
+
+def _get_path(entity):
+    return os.path.join(DB_DIR, f"{entity}.json")
+
+def _save_raw(entity, data):
+    path = _get_path(entity)
+    temp_path = path + ".tmp"
+    with open(temp_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+    with open(temp_path, 'r', encoding='utf-8') as f:
+        json.load(f)
+    os.replace(temp_path, path)
+
+def load_data(entity):
+    path = _get_path(entity)
+    if not os.path.exists(path):
+        return [] if isinstance(SCHEMA.get(entity), list) else {}
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_data(entity, data):
+    path = _get_path(entity)
+    if os.path.exists(path):
+        backup_name = f"{entity}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        shutil.copy(path, os.path.join(BACKUP_DIR, backup_name))
+    _save_raw(entity, data)
+
+def get_next_id(entity):
+    data = load_data(entity)
+    if not data: return 1
+    return max(item.get("id", 0) for item in data) + 1
+
+def create_record(entity, record):
+    data = load_data(entity)
+    record["id"] = get_next_id(entity)
+    data.append(record)
+    save_data(entity, data)
+    return record["id"]
+
+def update_record(entity, record_id, updates):
+    data = load_data(entity)
+    for item in data:
+        if item.get("id") == record_id:
+            item.update(updates)
+            break
+    save_data(entity, data)
+
+def delete_record(entity, record_id):
+    data = load_data(entity)
+    data = [item for item in data if item.get("id") != record_id]
+    save_data(entity, data)
+
+def get_record(entity, record_id):
+    data = load_data(entity)
+    for item in data:
+        if item.get("id") == record_id:
+            return item
+    return None
+
+def get_all_records(entity):
+    return load_data(entity)
+
+def get_next_numero(entity_type):
+    counters = load_data("counters")
+    year = datetime.now().year
+    if entity_type == "devis":
+        counters["dernier_devis"] += 1
+        num = counters["dernier_devis"]
+        prefix = f"DEV-{year}-{num:04d}"
+    elif entity_type == "facture":
+        counters["derniere_facture"] += 1
+        num = counters["derniere_facture"]
+        prefix = f"FAC-{year}-{num:04d}"
+    else:
+        return "NUM-0000"
+    save_data("counters", counters)
+    return prefix
+
+def get_df(entity):
+    return pd.DataFrame(get_all_records(entity))
+
+# Initialisation au lancement
+init_db()
+
+# ==========================================
+# 2. CONFIGURATION & DESIGN PREMIUM
+# ==========================================
 st.set_page_config(page_title="LNS GARAGE PRO", page_icon="🚗", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS POUR DESIGN ERP PREMIUM ---
 st.markdown("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
 <style>
     :root {
-        --primary-color: #1E3A8A; /* Bleu Roi */
-        --secondary-color: #3B82F6; /* Bleu Clair */
-        --bg-color: #F8FAFC;
-        --text-color: #1E293B;
-        --card-bg: #FFFFFF;
-        --border-radius: 12px;
+        --primary-color: #1E3A8A; --secondary-color: #3B82F6; --bg-color: #F8FAFC;
+        --text-color: #1E293B; --card-bg: #FFFFFF; --border-radius: 12px;
     }
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        color: var(--text-color);
-    }
-
-    /* Main Layout */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1200px;
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1E3A8A 0%, #172554 100%);
-        color: white;
-        border-right: 1px solid #e2e8f0;
-    }
-    [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
-        color: white !important;
-    }
-    [data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.2);
-    }
-    
-    /* Sidebar Radio Buttons (Menu) */
-    [data-testid="stSidebar"] [role="radiogroup"] {
-        gap: 10px;
-        width: 100%;
-    }
-    [data-testid="stSidebar"] [role="radio"] {
-        padding: 12px 16px;
-        border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.1);
-        background-color: rgba(255,255,255,0.05);
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-    }
-    [data-testid="stSidebar"] [role="radio"]:hover {
-        background-color: rgba(255,255,255,0.15);
-        border-color: var(--secondary-color);
-    }
-    [data-testid="stSidebar"] [role="radio"][aria-checked="true"] {
-        background-color: var(--secondary-color);
-        border-color: var(--secondary-color);
-        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
-        font-weight: 600;
-    }
-
-    /* Buttons */
-    .stButton>button {
-        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 10px 24px;
-        font-weight: 600;
-        transition: transform 0.2s, box-shadow 0.2s;
-        box-shadow: 0 4px 6px rgba(30, 58, 138, 0.2);
-        width: 100%;
-    }
-    .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 12px rgba(30, 58, 138, 0.3);
-        color: white;
-    }
-    .stButton>button[kind="secondary"] {
-        background: #F1F5F9;
-        color: #1E293B;
-        border: 1px solid #E2E8F0;
-        box-shadow: none;
-    }
-
-    /* KPI Cards */
-    .kpi-card {
-        background-color: var(--card-bg);
-        border-radius: var(--border-radius);
-        padding: 24px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        text-align: center;
-        border-top: 4px solid var(--primary-color);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .kpi-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 15px rgba(0,0,0,0.1);
-    }
-    .kpi-card h3 {
-        color: #64748B;
-        font-size: 1.1rem;
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-    }
-    .kpi-card h1 {
-        color: var(--primary-color);
-        font-size: 2.5rem;
-        font-weight: 800;
-        margin: 0;
-    }
-
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background-color: #F1F5F9;
-        padding: 6px;
-        border-radius: 12px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px;
-        border-radius: 8px;
-        color: #64748B;
-        font-weight: 600;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: var(--card-bg);
-        color: var(--primary-color);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    
-    /* DataFrames */
-    .stDataFrame {
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    
-    /* Form Inputs */
-    .stTextInput>div>div, .stNumberInput>div>div, .stTextArea>div>div, .stSelectbox>div>div {
-        border-radius: 8px;
-        border-color: #E2E8F0;
-    }
-    
-    /* Expander */
-    .stExpander {
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        background-color: #FFFFFF;
-    }
-
-    /* Titres */
-    h1, h2, h3 {
-        color: var(--text-color) !important;
-        font-weight: 700 !important;
-    }
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: var(--text-color); }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 1200px; }
+    [data-testid="stSidebar"] { background: linear-gradient(180deg, #1E3A8A 0%, #172554 100%); color: white; border-right: 1px solid #e2e8f0; }
+    [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span { color: white !important; }
+    [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.2); }
+    [data-testid="stSidebar"] [role="radiogroup"] { gap: 10px; width: 100%; }
+    [data-testid="stSidebar"] [role="radio"] { padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background-color: rgba(255,255,255,0.05); transition: all 0.3s ease; display: flex; align-items: center; }
+    [data-testid="stSidebar"] [role="radio"]:hover { background-color: rgba(255,255,255,0.15); border-color: var(--secondary-color); }
+    [data-testid="stSidebar"] [role="radio"][aria-checked="true"] { background-color: var(--secondary-color); border-color: var(--secondary-color); box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3); font-weight: 600; }
+    .stButton>button { background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: 600; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(30, 58, 138, 0.2); width: 100%; }
+    .stButton>button:hover { transform: translateY(-1px); box-shadow: 0 6px 12px rgba(30, 58, 138, 0.3); color: white; }
+    .stButton>button[kind="secondary"] { background: #F1F5F9; color: #1E293B; border: 1px solid #E2E8F0; box-shadow: none; }
+    .kpi-card { background-color: var(--card-bg); border-radius: var(--border-radius); padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid var(--primary-color); transition: transform 0.2s, box-shadow 0.2s; }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+    .kpi-card h3 { color: #64748B; font-size: 1.1rem; font-weight: 500; margin-bottom: 0.5rem; }
+    .kpi-card h1 { color: var(--primary-color); font-size: 2.5rem; font-weight: 800; margin: 0; }
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; background-color: #F1F5F9; padding: 6px; border-radius: 12px; }
+    .stTabs [data-baseweb="tab"] { padding: 10px 20px; border-radius: 8px; color: #64748B; font-weight: 600; }
+    .stTabs [aria-selected="true"] { background-color: var(--card-bg); color: var(--primary-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .stDataFrame { border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
+    .stExpander { border: 1px solid #E2E8F0; border-radius: 12px; background-color: #FFFFFF; }
+    h1, h2, h3 { color: var(--text-color) !important; font-weight: 700 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. INITIALISATION BASE DE DONNÉES JSON ---
-db.initialize_database()
-
-# Palette de couleurs pour les graphiques
 COLOR_PALETTE = ['#1E3A8A', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE', '#10B981', '#34D399']
 
-# --- 4. MENU DE NAVIGATION ---
+# ==========================================
+# 3. MENU DE NAVIGATION
+# ==========================================
 try:
     st.sidebar.image("assets/logo.png", width=150)
 except:
@@ -218,24 +197,17 @@ choice = st.sidebar.radio("Navigation", list(menu_items.keys()))
 module_name = menu_items[choice]
 
 # ==========================================
-# FONCTIONS UTILITAIRES
-# ==========================================
-def get_df(entity):
-    return pd.DataFrame(db.get_all_records(entity))
-
-# ==========================================
-# DÉFINITION DES MODULES
+# 4. DÉFINITION DES MODULES
 # ==========================================
 
-# --- MODULE 1 : TABLEAU DE BORD ---
 def show_dashboard():
     st.title("📊 Tableau de Bord")
     st.markdown("### Vue d'ensemble de l'activité")
     
-    nb_clients = len(db.get_all_records('clients'))
-    nb_vehicules = len(db.get_all_records('vehicules'))
-    nb_devis_attente = len([d for d in db.get_all_records('devis') if d.get('statut') == 'En attente'])
-    nb_factures_impayees = len([f for f in db.get_all_records('factures') if f.get('statut_paiement') == 'Impayée'])
+    nb_clients = len(get_all_records('clients'))
+    nb_vehicules = len(get_all_records('vehicules'))
+    nb_devis_attente = len([d for d in get_all_records('devis') if d.get('statut') == 'En attente'])
+    nb_factures_impayees = len([f for f in get_all_records('factures') if f.get('statut_paiement') == 'Impayée'])
     
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.markdown(f"<div class='kpi-card'><h3>Clients</h3><h1>{nb_clients}</h1></div>", unsafe_allow_html=True)
@@ -265,7 +237,6 @@ def show_dashboard():
             st.plotly_chart(fig, use_container_width=True)
         else: st.info("Aucune transaction en caisse.")
 
-# --- MODULE 2 : CLIENTS ---
 def show_clients():
     st.title("👤 Gestion des Clients")
     tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Ajouter", "🔍 Détails / Modifier"])
@@ -291,7 +262,7 @@ def show_clients():
             submitted = st.form_submit_button("Enregistrer le client")
             if submitted:
                 if nom and prenom and telephone:
-                    db.create_record('clients', {"nom": nom, "prenom": prenom, "telephone": telephone, "telephone2": telephone2, "email": email, "adresse": adresse, "ville": ville, "date_creation": str(date.today())})
+                    create_record('clients', {"nom": nom, "prenom": prenom, "telephone": telephone, "telephone2": telephone2, "email": email, "adresse": adresse, "ville": ville, "date_creation": str(date.today())})
                     st.success(f"Client {nom} {prenom} ajouté avec succès !")
                 else: st.error("Les champs Nom, Prénom et Téléphone sont obligatoires.")
 
@@ -301,7 +272,7 @@ def show_clients():
             client_dict = df_clients.apply(lambda row: f"{row['nom']} {row['prenom']} (ID: {row['id']})", axis=1).tolist()
             client_choice = st.selectbox("Choisir un client", client_dict)
             client_id = int(client_choice.split("ID: ")[1].replace(")", ""))
-            client_data = db.get_record('clients', client_id)
+            client_data = get_record('clients', client_id)
             
             with st.expander("Modifier ou Supprimer ce client"):
                 with st.form("modif_client"):
@@ -310,14 +281,13 @@ def show_clients():
                     m_tel = st.text_input("Téléphone", value=client_data['telephone'])
                     save = st.form_submit_button("Sauvegarder modifications")
                     if save:
-                        db.update_record('clients', client_id, {"nom": m_nom, "prenom": m_prenom, "telephone": m_tel})
+                        update_record('clients', client_id, {"nom": m_nom, "prenom": m_prenom, "telephone": m_tel})
                         st.success("Client modifié !"); st.rerun()
                 if st.button("🗑️ Supprimer ce client", type="secondary"):
-                    db.delete_record('clients', client_id)
+                    delete_record('clients', client_id)
                     st.warning("Client supprimé !"); st.rerun()
         else: st.info("Veuillez ajouter des clients d'abord.")
 
-# --- MODULE 3 : VÉHICULES ---
 def show_vehicules():
     st.title("🚘 Gestion des Véhicules")
     tab1, tab2 = st.tabs(["📋 Liste", "➕ Ajouter"])
@@ -354,11 +324,10 @@ def show_vehicules():
                 submitted = st.form_submit_button("Enregistrer le véhicule")
                 if submitted:
                     if immat and marque and modele:
-                        db.create_record('vehicules', {"client_id": client_id, "immatriculation": immat, "vin": vin, "marque": marque, "modele": modele, "annee": int(annee), "couleur": couleur, "kilometrage": int(kilometrage), "carburant": carburant})
+                        create_record('vehicules', {"client_id": client_id, "immatriculation": immat, "vin": vin, "marque": marque, "modele": modele, "annee": int(annee), "couleur": couleur, "kilometrage": int(kilometrage), "carburant": carburant})
                         st.success(f"Véhicule {immat} ajouté avec succès !")
                     else: st.error("Immatriculation, Marque et Modèle sont obligatoires.")
 
-# --- FONCTION GÉNÉRATION PDF ---
 def generate_devis_pdf(devis_info, client_info, vehicule_info, details):
     if not os.path.exists("pdf"): os.makedirs("pdf")
     pdf_path = f"pdf/Devis_{devis_info['numero_devis']}.pdf"
@@ -399,7 +368,6 @@ def generate_devis_pdf(devis_info, client_info, vehicule_info, details):
     doc.build(elements)
     return pdf_path
 
-# --- MODULE 6 : DEVIS ---
 def show_devis():
     st.title("📝 Gestion des Devis")
     tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Créer", "🔍 Voir / PDF / Modifier"])
@@ -428,7 +396,7 @@ def show_devis():
             with st.form("new_devis"):
                 col_date, col_num, col_statut = st.columns(3)
                 with col_date: date_creation = st.date_input("Date du devis *")
-                with col_num: numero_devis = st.text_input("N° Devis", value=db.get_next_numero('devis'))
+                with col_num: numero_devis = st.text_input("N° Devis", value=get_next_numero('devis'))
                 with col_statut: statut = st.selectbox("Statut", ["En attente", "Validé", "Refusé"])
                 
                 st.markdown("---")
@@ -460,7 +428,7 @@ def show_devis():
                     tva = total_ht * 0.20
                     total_ttc = total_ht + tva
                     
-                    db.create_record('devis', {
+                    create_record('devis', {
                         "vehicule_id": veh_id, "numero_devis": numero_devis, "date_creation": str(date_creation),
                         "statut": statut, "total_pieces": total_pieces, "total_mo": total_mo, "tva": tva,
                         "total_ttc": total_ttc, "details": {"mo": mo_details_list, "pieces": pieces_details_list}
@@ -468,14 +436,14 @@ def show_devis():
                     st.success(f"✅ Devis {numero_devis} sauvegardé ! Total TTC : {total_ttc:.2f} dzd")
 
     with tab3:
-        all_devis = db.get_all_records('devis')
+        all_devis = get_all_records('devis')
         if all_devis:
             devis_dict = [f"{d['numero_devis']} (TTC: {d['total_ttc']}dzd) [ID:{d['id']}]" for d in all_devis]
             devis_choice = st.selectbox("Choisir un devis", devis_dict)
             devis_id = int(devis_choice.split("[ID:")[1].replace("]", ""))
-            devis_info = db.get_record('devis', devis_id)
-            veh_info = db.get_record('vehicules', devis_info['vehicule_id'])
-            client_info = db.get_record('clients', veh_info['client_id'])
+            devis_info = get_record('devis', devis_id)
+            veh_info = get_record('vehicules', devis_info['vehicule_id'])
+            client_info = get_record('clients', veh_info['client_id'])
             
             if st.button("📄 Générer / Télécharger le PDF"):
                 pdf_path = generate_devis_pdf(devis_info, client_info, veh_info, devis_info.get('details', {}))
@@ -485,24 +453,23 @@ def show_devis():
             with st.expander("🔄 Modifier le statut du devis"):
                 new_statut = st.selectbox("Nouveau statut", ["En attente", "Validé", "Refusé", "Facturé"])
                 if st.button("Sauvegarder le nouveau statut"):
-                    db.update_record('devis', devis_id, {"statut": new_statut})
+                    update_record('devis', devis_id, {"statut": new_statut})
                     st.success("Statut mis à jour !"); st.rerun()
         else: st.info("Aucun devis à afficher pour le moment.")
 
-# --- MODULE QR CODE ---
 def show_qr_dashboard(veh_id):
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO - Suivi Véhicule</h1>", unsafe_allow_html=True)
-    veh_info = db.get_record('vehicules', veh_id)
+    veh_info = get_record('vehicules', veh_id)
     if not veh_info: st.error("Véhicule introuvable."); return
-    client_info = db.get_record('clients', veh_info['client_id'])
+    client_info = get_record('clients', veh_info['client_id'])
     
     st.markdown(f"<h3 style='text-align: center;'>{client_info['nom']} - {veh_info['marque']} {veh_info['modele']} ({veh_info['immatriculation']})</h3>", unsafe_allow_html=True)
     st.markdown("---")
     st.subheader("🏭 Statut des Travaux")
-    ordres = [o for o in db.get_all_records('reparations') if o['vehicule_id'] == veh_id and o['statut'] != 'Terminé']
+    ordres = [o for o in get_all_records('reparations') if o['vehicule_id'] == veh_id and o['statut'] != 'Terminé']
     if ordres:
         o = ordres[-1]
-        suivi = next((s for s in db.get_all_records('suivi_atelier') if s['or_id'] == o['id']), None)
+        suivi = next((s for s in get_all_records('suivi_atelier') if s['or_id'] == o['id']), None)
         if suivi: st.progress(int(suivi['progression']) / 100, text=f"Étape : {suivi['etape_actuelle']} ({o['statut']})")
     else: st.success("✅ Réparation Terminée ou Non commencée")
 
@@ -527,7 +494,6 @@ def show_qrcode():
         st.image(byte_im, caption="QR Code généré")
         st.download_button(label="⬇️ Télécharger QR Code", data=byte_im, file_name=f"QRCode_Veh_{veh_id}.png", mime="image/png")
 
-# --- MODULE MULTI-UTILISATEURS ---
 def show_users():
     st.title("🔐 Gestion des Utilisateurs")
     tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Ajouter", "🔍 Modifier / Supprimer"])
@@ -544,11 +510,11 @@ def show_users():
             with col2: mot_de_passe = st.text_input("Mot de passe *", type="password"); role = st.selectbox("Rôle *", ["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"])
             if st.form_submit_button("✅ Créer le compte"):
                 if nom and username and mot_de_passe:
-                    users = db.get_all_records('utilisateurs')
+                    users = get_all_records('utilisateurs')
                     if any(u['username'] == username for u in users): st.error("❌ Ce Pseudo existe déjà.")
                     else:
                         hashed_pw = hashlib.sha256(mot_de_passe.encode()).hexdigest()
-                        db.create_record('utilisateurs', {"nom": nom, "username": username, "password_hash": hashed_pw, "role": role})
+                        create_record('utilisateurs', {"nom": nom, "username": username, "password_hash": hashed_pw, "role": role})
                         st.success(f"✅ Compte '{username}' créé !")
                 else: st.error("❌ Tous les champs sont obligatoires.")
 
@@ -558,7 +524,7 @@ def show_users():
             user_dict = df_users.apply(lambda r: f"{r['nom']} ({r['username']}) [ID:{r['id']}]", axis=1).tolist()
             user_choice = st.selectbox("Choisir un utilisateur", user_dict)
             user_id = int(user_choice.split("[ID:")[1].replace("]", ""))
-            detail = db.get_record('utilisateurs', user_id)
+            detail = get_record('utilisateurs', user_id)
             
             with st.form("modif_user"):
                 m_nom = st.text_input("Nom", value=detail['nom'])
@@ -568,15 +534,15 @@ def show_users():
                 if st.form_submit_button("💾 Sauvegarder"):
                     updates = {"nom": m_nom, "username": m_pseudo, "role": m_role}
                     if m_mdp: updates["password_hash"] = hashlib.sha256(m_mdp.encode()).hexdigest()
-                    db.update_record('utilisateurs', user_id, updates)
+                    update_record('utilisateurs', user_id, updates)
                     st.success("✅ Utilisateur modifié !"); st.rerun()
             
             if st.button(f"🗑️ Supprimer {detail['nom']}", type="secondary"):
-                db.delete_record('utilisateurs', user_id)
+                delete_record('utilisateurs', user_id)
                 st.success("Utilisateur supprimé !"); st.rerun()
 
 # ==========================================
-# EXÉCUTION PRINCIPALE
+# 5. EXÉCUTION PRINCIPALE
 # ==========================================
 query_params = st.query_params
 if "veh_id" in query_params:
