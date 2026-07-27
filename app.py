@@ -482,7 +482,6 @@ def show_dashboard():
             st.info("Aucune transaction en caisse pour afficher le graphique.")
             
     conn.close()
-
 # --- MODULE 2 : CLIENTS ---
 def show_clients():
     st.title("👤 Gestion des Clients")
