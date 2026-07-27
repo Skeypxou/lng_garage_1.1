@@ -17,8 +17,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 import qrcode
 import json
 import os
-import lockfile # Optionnel, mais recommandé pour éviter la corruption si plusieurs personnes utilisent l'app. Sinon, on peut utiliser une méthode simple.
-
 # --- GESTIONNAIRE DE BASE DE DONNÉES JSON (JSONDB) ---
 class JsonDB:
     def __init__(self, filepath="lns_garage_data.jsondb"):
