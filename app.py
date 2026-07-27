@@ -70,15 +70,73 @@ st.markdown("""
         padding: 25px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         text-align: center;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     .kpi-card h3 {
         color: #94A3B8 !important; 
+        margin: 0 0 10px 0;
     }
     .kpi-card h1 {
         color: #FFFFFF !important; 
+        margin: 0;
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- GESTIONNAIRE DE BASE DE DONNÉES JSON (JSONDB) ---
+class JsonDB:
+    def __init__(self, filepath="lns_garage_data.jsondb"):
+        self.filepath = filepath
+        self.data = self._load()
+
+    def _load(self):
+        if not os.path.exists(self.filepath):
+            default_data = {
+                "parametres_garage": {
+                    "nom_garage": "LNS GARAGE PRO",
+                    "adresse": "",
+                    "telephone": "",
+                    "tva_defaut": 19.0,
+                    "prix_heure_mo_defaut": 45.0
+                },
+                "historique_notifications": [],
+                "config_avancee": {}
+            }
+            self._save(default_data)
+            return default_data
+        
+        try:
+            with open(self.filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return {"erreur": "Fichier corrompu réinitialisé"}
+
+    def _save(self, data=None):
+        if data is not None:
+            self.data = data
+        with open(self.filepath, 'w', encoding='utf-8') as f:
+            json.dump(self.data, f, indent=4, ensure_ascii=False)
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+
+    def set(self, key, value):
+        self.data[key] = value
+        self._save()
+
+    def update_nested(self, main_key, sub_key, value):
+        if main_key in self.data:
+            self.data[main_key][sub_key] = value
+            self._save()
+        else:
+            self.data[main_key] = {sub_key: value}
+            self._save()
+
+# Initialisation globale de la base JSON
+json_db = JsonDB()
 
 # --- GESTIONNAIRE DE BASE DE DONNÉES JSON (JSONDB) ---
 class JsonDB:
