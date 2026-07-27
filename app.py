@@ -337,7 +337,11 @@ def show_reception():
         if not df_r.empty and not df_v.empty and not df_c.empty:
             df = pd.merge(df_r, df_v, left_on='vehicule_id', right_on='id', suffixes=('_r', '_v'))
             df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            df['Client'] = (
+    df['nom'].fillna('') +
+    ' ' +
+    df['prenom'].fillna('')
+)
             st.dataframe(df[['date_entree', 'immatriculation', 'marque', 'Client', 'observations']], use_container_width=True, hide_index=True)
         else: st.info("Aucune réception enregistrée.")
 
