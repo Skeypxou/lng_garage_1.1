@@ -598,11 +598,32 @@ def show_ordres():
         df_v = get_df('vehicules'); df_c = get_df('clients'); df_d = get_df('devis')
         if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un OR !")
         else:
-            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']} {r['prenom_c']}) [VehID:{r['id_v']}]", axis=1)
-            veh_choice = st.selectbox("Véhicule concerné", df_veh['display'].tolist())
-            veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
-            
+           df_veh = pd.merge(
+    df_v,
+    df_c,
+    left_on='client_id',
+    right_on='id',
+    suffixes=('_v', '_c')
+)
+
+# Construction du nom complet client
+if 'prenom' in df_veh.columns:
+    df_veh['client_nom'] = (
+        df_veh['nom'].fillna('') +
+        ' ' +
+        df_veh['prenom'].fillna('')
+    )
+else:
+    df_veh['client_nom'] = df_veh['nom'].fillna('')
+
+df_veh['display'] = df_veh.apply(
+    lambda r:
+        f"{r['immatriculation']} - "
+        f"{r['marque']} {r['modele']} "
+        f"({r['client_nom']}) "
+        f"[ID:{r['id_v']}]",
+    axis=1
+)
             df_devis_filtered = df_d[df_d['vehicule_id'] == veh_id]
             devis_options = ["Aucun devis (Travaux internes)"]
             if not df_devis_filtered.empty:
@@ -631,7 +652,11 @@ def show_ordres():
         if not df_o.empty and not df_v.empty and not df_c.empty:
             df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
             df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            df['Client'] = (
+    df['nom'].fillna('') +
+    ' ' +
+    df['prenom'].fillna('')
+)
             df['display'] = df.apply(lambda r: f"{r['numero_or']} - {r['Client']} ({r['immatriculation']}) Statut: {r['statut']} [ORID:{r['id_o']}]", axis=1)
             or_choice = st.selectbox("Choisir un Ordre de Réparation", df['display'].tolist())
             or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
