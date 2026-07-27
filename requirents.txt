@@ -1,6 +1,4 @@
-streamlit
-pandas
 plotly
 reportlab
-Pillow
 qrcode
+Pillow
