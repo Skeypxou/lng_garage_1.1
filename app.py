@@ -337,11 +337,7 @@ def show_reception():
         if not df_r.empty and not df_v.empty and not df_c.empty:
             df = pd.merge(df_r, df_v, left_on='vehicule_id', right_on='id', suffixes=('_r', '_v'))
             df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = (
-    df['nom'].fillna('') +
-    ' ' +
-    df['prenom'].fillna('')
-)
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
             st.dataframe(df[['date_entree', 'immatriculation', 'marque', 'Client', 'observations']], use_container_width=True, hide_index=True)
         else: st.info("Aucune réception enregistrée.")
 
@@ -507,204 +503,81 @@ def generate_devis_pdf(devis_info, client_info, vehicule_info, details):
     doc.build(elements)
     return pdf_path
 
-with tab2:
-    df_v = get_df('vehicules')
-    df_c = get_df('clients')
+def show_devis():
+    st.title("📝 Gestion des Devis")
+    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Créer", "🔍 Voir / PDF / Modifier"])
+    
+    with tab1:
+        df_d = get_df('devis'); df_v = get_df('vehicules'); df_c = get_df('clients')
+        if not df_d.empty:
+            df = pd.merge(df_d, df_v, left_on='vehicule_id', right_on='id', suffixes=('_d', '_v'))
+            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
+            st.dataframe(df[['numero_devis', 'immatriculation', 'Client', 'date_creation', 'statut', 'total_ttc']], use_container_width=True, hide_index=True)
+        else: st.info("Aucun devis créé pour le moment.")
 
-    if df_v.empty or df_c.empty:
-        st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un devis !")
-
-    else:
-
-        # Fusion véhicules + clients
-        df_veh = pd.merge(
-            df_v,
-            df_c,
-            left_on='client_id',
-            right_on='id',
-            suffixes=('_v', '_c')
-        )
-
-        # Création du nom complet client
-        if 'prenom' in df_veh.columns:
-            df_veh['client_nom'] = (
-                df_veh['nom'].fillna('') +
-                ' ' +
-                df_veh['prenom'].fillna('')
-            )
+    with tab2:
+        df_v = get_df('vehicules'); df_c = get_df('clients')
+        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un devis !")
         else:
-            df_veh['client_nom'] = df_veh['nom'].fillna('')
+            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
+            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']}) [ID:{r['id_v']}]", axis=1)
+            veh_choice = st.selectbox("Véhicule concerné", df_veh['display'].tolist())
+            veh_id = int(veh_choice.split("[ID:")[1].replace("]", ""))
+            
+            with st.form("new_devis"):
+                col_date, col_num, col_statut = st.columns(3)
+                with col_date: date_creation = st.date_input("Date du devis *")
+                with col_num: numero_devis = st.text_input("N° Devis", value=get_next_numero('devis'))
+                with col_statut: statut = st.selectbox("Statut", ["En attente", "Validé", "Refusé"])
+                
+                st.markdown("---"); st.subheader("🔧 Main d'œuvre")
+                mo_details_list = []
+                for task in ["Débosselage", "Redressage", "Soudure", "Préparation", "Peinture", "Polissage"]:
+                    col1, col2, col3 = st.columns(3)
+                    with col1: h = st.number_input(f"{task} (Heures)", min_value=0.0, step=0.5, key=f"mo_h_{task}")
+                    with col2: p = st.number_input(f"Prix / H", min_value=0.0, value=45.0, format="%.2f", key=f"mo_p_{task}")
+                    with col3: st.write(f"Total: **{h * p:.2f} dzd**")
+                    mo_details_list.append({"desc": task, "qty": h, "price": p, "total": h * p})
+                
+                st.markdown("---"); st.subheader("🔩 Pièces et Fournitures")
+                pieces_details_list = []
+                for i in range(5):
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1: ref = st.text_input(f"Réf. Pièce {i+1}", key=f"p_ref_{i}")
+                    with col2: des = st.text_input(f"Désignation Pièce {i+1}", key=f"p_des_{i}")
+                    with col3: qty = st.number_input(f"Qté Pièce {i+1}", min_value=0, step=1, key=f"p_qty_{i}")
+                    with col4: px = st.number_input(f"Prix Pièce {i+1}", min_value=0.0, format="%.2f", key=f"p_px_{i}")
+                    if qty > 0 and des: pieces_details_list.append({"ref": ref, "desc": des, "qty": int(qty), "price": px, "total": qty * px})
+                
+                if st.form_submit_button("📊 Calculer et Sauvegarder le Devis"):
+                    total_mo = sum(item['total'] for item in mo_details_list)
+                    total_pieces = sum(item['total'] for item in pieces_details_list)
+                    total_ht = total_mo + total_pieces; tva = total_ht * 0.20; total_ttc = total_ht + tva
+                    create_record('devis', {"vehicule_id": veh_id, "numero_devis": numero_devis, "date_creation": str(date_creation), "statut": statut, "total_pieces": total_pieces, "total_mo": total_mo, "tva": tva, "total_ttc": total_ttc, "details": {"mo": mo_details_list, "pieces": pieces_details_list}})
+                    st.success(f"✅ Devis {numero_devis} sauvegardé ! Total TTC : {total_ttc:.2f} dzd")
 
-        # Création du texte affiché
-        df_veh['display'] = df_veh.apply(
-            lambda r:
-            f"{r['immatriculation']} - "
-            f"{r['marque']} {r['modele']} "
-            f"({r['client_nom']}) "
-            f"[ID:{r['id_v']}]",
-            axis=1
-        )
-
-        veh_choice = st.selectbox(
-            "Véhicule concerné",
-            df_veh['display'].tolist()
-        )
-
-        veh_id = int(
-            veh_choice.split("[ID:")[1]
-            .replace("]", "")
-        )
-
-        with st.form("new_devis"):
-
-            col_date, col_num, col_statut = st.columns(3)
-
-            with col_date:
-                date_creation = st.date_input("Date du devis *")
-
-            with col_num:
-                numero_devis = st.text_input(
-                    "N° Devis",
-                    value=get_next_numero('devis')
-                )
-
-            with col_statut:
-                statut = st.selectbox(
-                    "Statut",
-                    ["En attente", "Validé", "Refusé"]
-                )
-
-            st.markdown("---")
-            st.subheader("🔧 Main d'œuvre")
-
-            mo_details_list = []
-
-            for task in [
-                "Débosselage",
-                "Redressage",
-                "Soudure",
-                "Préparation",
-                "Peinture",
-                "Polissage"
-            ]:
-
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    h = st.number_input(
-                        f"{task} (Heures)",
-                        min_value=0.0,
-                        step=0.5,
-                        key=f"mo_h_{task}"
-                    )
-
-                with col2:
-                    p = st.number_input(
-                        f"Prix / H",
-                        min_value=0.0,
-                        value=45.0,
-                        format="%.2f",
-                        key=f"mo_p_{task}"
-                    )
-
-                with col3:
-                    st.write(
-                        f"Total: **{h * p:.2f} DZD**"
-                    )
-
-                mo_details_list.append({
-                    "desc": task,
-                    "qty": h,
-                    "price": p,
-                    "total": h * p
-                })
-
-            st.markdown("---")
-            st.subheader("🔩 Pièces et Fournitures")
-
-            pieces_details_list = []
-
-            for i in range(5):
-
-                col1, col2, col3, col4 = st.columns(4)
-
-                with col1:
-                    ref = st.text_input(
-                        f"Réf. Pièce {i+1}",
-                        key=f"p_ref_{i}"
-                    )
-
-                with col2:
-                    des = st.text_input(
-                        f"Désignation Pièce {i+1}",
-                        key=f"p_des_{i}"
-                    )
-
-                with col3:
-                    qty = st.number_input(
-                        f"Qté Pièce {i+1}",
-                        min_value=0,
-                        step=1,
-                        key=f"p_qty_{i}"
-                    )
-
-                with col4:
-                    px = st.number_input(
-                        f"Prix Pièce {i+1}",
-                        min_value=0.0,
-                        format="%.2f",
-                        key=f"p_px_{i}"
-                    )
-
-                if qty > 0 and des:
-                    pieces_details_list.append({
-                        "ref": ref,
-                        "desc": des,
-                        "qty": int(qty),
-                        "price": px,
-                        "total": qty * px
-                    })
-
-            if st.form_submit_button(
-                "📊 Calculer et Sauvegarder le Devis"
-            ):
-
-                total_mo = sum(
-                    item['total']
-                    for item in mo_details_list
-                )
-
-                total_pieces = sum(
-                    item['total']
-                    for item in pieces_details_list
-                )
-
-                total_ht = total_mo + total_pieces
-                tva = total_ht * 0.20
-                total_ttc = total_ht + tva
-
-                create_record(
-                    'devis',
-                    {
-                        "vehicule_id": veh_id,
-                        "numero_devis": numero_devis,
-                        "date_creation": str(date_creation),
-                        "statut": statut,
-                        "total_pieces": total_pieces,
-                        "total_mo": total_mo,
-                        "tva": tva,
-                        "total_ttc": total_ttc,
-                        "details": {
-                            "mo": mo_details_list,
-                            "pieces": pieces_details_list
-                        }
-                    }
-                )
-
-                st.success(
-                    f"✅ Devis {numero_devis} sauvegardé ! "
-                    f"Total TTC : {total_ttc:.2f} DZD"
-                )
+    with tab3:
+        all_devis = get_all_records('devis')
+        if all_devis:
+            devis_dict = [f"{d['numero_devis']} (TTC: {d['total_ttc']}dzd) [ID:{d['id']}]" for d in all_devis]
+            devis_choice = st.selectbox("Choisir un devis", devis_dict)
+            devis_id = int(devis_choice.split("[ID:")[1].replace("]", ""))
+            devis_info = get_record('devis', devis_id)
+            veh_info = get_record('vehicules', devis_info['vehicule_id'])
+            client_info = get_record('clients', veh_info['client_id'])
+            
+            if st.button("📄 Générer / Télécharger le PDF"):
+                pdf_path = generate_devis_pdf(devis_info, client_info, veh_info, devis_info.get('details', {}))
+                with open(pdf_path, "rb") as f: pdf_bytes = f.read()
+                st.download_button(label="⬇️ Télécharger le Devis PDF", data=pdf_bytes, file_name=f"Devis_{devis_info['numero_devis']}.pdf", mime="application/pdf")
+            
+            with st.expander("🔄 Modifier le statut du devis"):
+                new_statut = st.selectbox("Nouveau statut", ["En attente", "Validé", "Refusé", "Facturé"])
+                if st.button("Sauvegarder le nouveau statut"):
+                    update_record('devis', devis_id, {"statut": new_statut})
+                    st.success("Statut mis à jour !"); st.rerun()
+        else: st.info("Aucun devis à afficher pour le moment.")
 
 def show_ordres():
     st.title("🔧 Ordres de Réparation (OR)")
@@ -725,32 +598,11 @@ def show_ordres():
         df_v = get_df('vehicules'); df_c = get_df('clients'); df_d = get_df('devis')
         if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un OR !")
         else:
-           df_veh = pd.merge(
-    df_v,
-    df_c,
-    left_on='client_id',
-    right_on='id',
-    suffixes=('_v', '_c')
-)
-
-# Construction du nom complet client
-if 'prenom' in df_veh.columns:
-    df_veh['client_nom'] = (
-        df_veh['nom'].fillna('') +
-        ' ' +
-        df_veh['prenom'].fillna('')
-    )
-else:
-    df_veh['client_nom'] = df_veh['nom'].fillna('')
-
-df_veh['display'] = df_veh.apply(
-    lambda r:
-        f"{r['immatriculation']} - "
-        f"{r['marque']} {r['modele']} "
-        f"({r['client_nom']}) "
-        f"[ID:{r['id_v']}]",
-    axis=1
-)
+            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
+            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']} {r['prenom_c']}) [VehID:{r['id_v']}]", axis=1)
+            veh_choice = st.selectbox("Véhicule concerné", df_veh['display'].tolist())
+            veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+            
             df_devis_filtered = df_d[df_d['vehicule_id'] == veh_id]
             devis_options = ["Aucun devis (Travaux internes)"]
             if not df_devis_filtered.empty:
@@ -779,11 +631,7 @@ df_veh['display'] = df_veh.apply(
         if not df_o.empty and not df_v.empty and not df_c.empty:
             df = pd.merge(df_o, df_v, left_on='vehicule_id', right_on='id', suffixes=('_o', '_v'))
             df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = (
-    df['nom'].fillna('') +
-    ' ' +
-    df['prenom'].fillna('')
-)
+            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
             df['display'] = df.apply(lambda r: f"{r['numero_or']} - {r['Client']} ({r['immatriculation']}) Statut: {r['statut']} [ORID:{r['id_o']}]", axis=1)
             or_choice = st.selectbox("Choisir un Ordre de Réparation", df['display'].tolist())
             or_id = int(or_choice.split("[ORID:")[1].replace("]", ""))
