@@ -1899,6 +1899,175 @@ def show_photos():
                                 st.error("Photo introuvable dans la base de données.")
                     else:
                         st.info("Aucune photo à supprimer pour ce véhicule.")
+def show_employes():
+    st.title("👷 Gestion des Employés & Productivité")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Liste des Employés", "➕ Ajouter un Employé", "🔍 Modifier / Supprimer", "📊 Productivité"])
+    
+    # --- TAB 1 : LISTE ---
+    with tab1:
+        employes = get_all_records('employes')
+        
+        if not employes:
+            st.info("Aucun employé enregistré pour le moment.")
+        else:
+            data_to_display = []
+            for e in employes:
+                salaire = float(e.get('salaire', 0.0))
+                data_to_display.append({
+                    "Nom": e.get('nom', ''),
+                    "Fonction": e.get('fonction', ''),
+                    "Téléphone": e.get('telephone', ''),
+                    "Salaire (€)": f"{salaire:.2f} €"
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : AJOUTER ---
+    with tab2:
+        with st.form("add_employe"):
+            st.subheader("🆕 Nouvel Employé")
+            col1, col2 = st.columns(2)
+            with col1:
+                nom = st.text_input("Nom complet * (ex: Jean Dupont)")
+                fonction = st.selectbox("Fonction / Rôle *", ["Chef d'atelier", "Tôlier", "Peintre", "Préparateur", "Réceptionniste", "Comptable"])
+            with col2:
+                telephone = st.text_input("Téléphone")
+                salaire = st.number_input("Salaire mensuel (€) *", min_value=0.0, format="%.2f")
+                
+            submitted = st.form_submit_button("✅ Ajouter l'employé")
+            if submitted:
+                if nom and fonction and salaire > 0:
+                    create_record('employes', {
+                        "nom": nom,
+                        "fonction": fonction,
+                        "telephone": telephone,
+                        "salaire": float(salaire)
+                    })
+                    st.success(f"✅ Employé {nom} ajouté avec succès !")
+                else:
+                    st.error("❌ Le Nom, la Fonction et le Salaire sont obligatoires.")
+
+    # --- TAB 3 : MODIFIER / SUPPRIMER ---
+    with tab3:
+        employes = get_all_records('employes')
+        
+        if not employes:
+            st.info("Aucun employé à modifier.")
+        else:
+            emp_dict = []
+            for e in employes:
+                display = f"{e.get('nom', '')} (ID: {e.get('id', '')})"
+                emp_dict.append(display)
+                
+            emp_choice = st.selectbox("Choisir un employé", emp_dict)
+            emp_id = int(emp_choice.split("ID: ")[1].replace(")", ""))
+            
+            detail = get_record('employes', emp_id)
+            
+            if detail is None:
+                st.error("Employé introuvable dans la base de données.")
+                return
+            
+            with st.form("modif_employe"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    m_nom = st.text_input("Nom *", value=detail.get('nom', ''))
+                    fonctions = ["Chef d'atelier", "Tôlier", "Peintre", "Préparateur", "Réceptionniste", "Comptable"]
+                    current_fonction = detail.get('fonction', 'Chef d\'atelier')
+                    f_index = fonctions.index(current_fonction) if current_fonction in fonctions else 0
+                    m_fonction = st.selectbox("Fonction *", fonctions, index=f_index)
+                with col2:
+                    m_tel = st.text_input("Téléphone", value=detail.get('telephone', ''))
+                    m_salaire = st.number_input("Salaire (€) *", min_value=0.0, format="%.2f", value=float(detail.get('salaire', 0.0)))
+                
+                save = st.form_submit_button("💾 Sauvegarder")
+                if save:
+                    update_record('employes', emp_id, {
+                        "nom": m_nom,
+                        "fonction": m_fonction,
+                        "telephone": m_tel,
+                        "salaire": float(m_salaire)
+                    })
+                    st.success("✅ Employé modifié !")
+                    st.rerun()
+            
+            st.markdown("---")
+            if st.button(f"🗑️ Supprimer {detail.get('nom', '')}", type="secondary"):
+                delete_record('employes', emp_id)
+                st.success("Employé supprimé !")
+                st.rerun()
+
+    # --- TAB 4 : PRODUCTIVITÉ ---
+    with tab4:
+        st.subheader("📊 Suivi des Performances par Employé")
+        st.info("💡 L'application relie automatiquement le nom de l'employé aux Ordres de Réparation pour calculer son chiffre d'affaires généré.")
+        
+        employes = get_all_records('employes')
+        
+        if not employes:
+            st.warning("Ajoutez des employés pour voir leurs statistiques.")
+        else:
+            all_ordres = get_all_records('reparations')
+            stats_data = []
+            
+            for emp in employes:
+                emp_nom = emp.get('nom', '')
+                
+                # Filtrer les OR terminés par cet employé
+                ordres_termines = [o for o in all_ordres if o.get('responsable', '') == emp_nom and o.get('statut', '') == 'Terminé']
+                total_or = len(ordres_termines)
+                
+                # Calculer le CA généré
+                ca_genere = 0.0
+                for o in ordres_termines:
+                    devis_id = o.get('devis_id')
+                    if devis_id:
+                        devis = get_record('devis', devis_id)
+                        if devis:
+                            ca_genere += float(devis.get('total_ttc', 0.0))
+                
+                salaire = float(emp.get('salaire', 0.0))
+                
+                stats_data.append({
+                    'Nom': emp_nom,
+                    'Fonction': emp.get('fonction', ''),
+                    'Salaire': salaire,
+                    'OR Terminés': total_or,
+                    'CA Généré': ca_genere,
+                    'ROI (CA - Salaire)': ca_genere - salaire
+                })
+                
+            df_perf_display = pd.DataFrame(stats_data)
+            
+            # Afficher les KPI Globaux
+            total_salaire = df_perf_display['Salaire'].sum()
+            total_ca_team = df_perf_display['CA Généré'].sum()
+            roi_net = total_ca_team - total_salaire
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(label="💸 Total Salaires", value=f"{total_salaire:.2f} €")
+            with col2:
+                st.metric(label="📈 CA Généré par l'atelier", value=f"{total_ca_team:.2f} €")
+            with col3:
+                delta_color = "normal" if roi_net >= 0 else "inverse"
+                st.metric(label="💎 Rentabilité Atelier (CA - Salaires)", value=f"{roi_net:.2f} €", delta=f"{roi_net:.2f} €", delta_color=delta_color)
+                
+            st.markdown("---")
+            st.subheader("Détail par Employé")
+            st.dataframe(df_perf_display, use_container_width=True, hide_index=True)
+            
+            st.markdown("---")
+            st.subheader("🏆 Classement par Chiffre d'affaires Généré")
+            df_perf_sorted = df_perf_display.sort_values(by='CA Généré', ascending=False)
+            
+            fig_perf = px.bar(df_perf_sorted, x='Nom', y='CA Généré', 
+                              title="CA Généré par Employé (OR Terminés)",
+                              color='Fonction', text='CA Généré')
+            fig_perf.update_traces(texttemplate='%{text:.2f} €', textposition='outside')
+            st.plotly_chart(fig_perf, use_container_width=True)
 def show_qrcode():
     st.title("📱 Génération de QR Code Client")
     
