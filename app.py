@@ -3167,48 +3167,119 @@ def show_qrcode():
         """)
 
 def show_users():
-    st.title("🔐 Gestion des Utilisateurs")
-    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Ajouter", "🔍 Modifier / Supprimer"])
+    st.title("🔐 Gestion des Utilisateurs & Permissions")
     
+    tab1, tab2, tab3 = st.tabs(["📋 Liste des Utilisateurs", "➕ Ajouter un Utilisateur", "🔍 Modifier / Supprimer"])
+    
+    # --- TAB 1 : LISTE ---
     with tab1:
-        df = get_df('utilisateurs')
-        if not df.empty: st.dataframe(df[['id', 'nom', 'username', 'role']], use_container_width=True, hide_index=True)
-        else: st.info("Aucun utilisateur.")
+        users = get_all_records('utilisateurs')
+        if not users:
+            st.info("Aucun utilisateur enregistré.")
+        else:
+            data_to_display = []
+            for u in users:
+                data_to_display.append({
+                    "ID": u.get('id', ''),
+                    "Nom": u.get('nom', ''),
+                    "Pseudo": u.get('username', ''),
+                    "Rôle": u.get('role', '')
+                })
+            df_display = pd.DataFrame(data_to_display)
+            # Ne jamais afficher le mot de passe dans la liste !
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
 
+    # --- TAB 2 : AJOUTER ---
     with tab2:
         with st.form("add_user"):
+            st.subheader("🆕 Nouvel Utilisateur")
             col1, col2 = st.columns(2)
-            with col1: nom = st.text_input("Nom complet *"); username = st.text_input("Pseudo (Login) *")
-            with col2: mot_de_passe = st.text_input("Mot de passe *", type="password"); role = st.selectbox("Rôle *", ["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"])
-            if st.form_submit_button("✅ Créer le compte"):
+            with col1:
+                nom = st.text_input("Nom complet * (ex: Jean Tôlier)")
+                username = st.text_input("Pseudo (Login) * (ex: jean.to)")
+            with col2:
+                mot_de_passe = st.text_input("Mot de passe *", type="password")
+                roles = ["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"]
+                role = st.selectbox("Rôle / Permission *", roles)
+                
+            submitted = st.form_submit_button("✅ Créer le compte")
+            if submitted:
                 if nom and username and mot_de_passe:
+                    # Vérifier l'unicité du pseudo via JSONDB
                     users = get_all_records('utilisateurs')
-                    if any(u['username'] == username for u in users): st.error("❌ Ce Pseudo existe déjà.")
+                    if any(u.get('username', '') == username for u in users):
+                        st.error("❌ Ce Pseudo (Login) existe déjà ! Choisis un autre.")
                     else:
+                        # Hashage du mot de passe en SHA-256
                         hashed_pw = hashlib.sha256(mot_de_passe.encode()).hexdigest()
-                        create_record('utilisateurs', {"nom": nom, "username": username, "password_hash": hashed_pw, "role": role})
-                        st.success(f"✅ Compte '{username}' créé !")
-                else: st.error("❌ Tous les champs sont obligatoires.")
+                        create_record('utilisateurs', {
+                            "nom": nom, 
+                            "username": username, 
+                            "password_hash": hashed_pw, 
+                            "role": role
+                        })
+                        st.success(f"✅ Compte '{username}' créé avec succès ! Rôle : {role}")
+                        st.rerun()
+                else:
+                    st.error("❌ Tous les champs sont obligatoires.")
 
+    # --- TAB 3 : MODIFIER / SUPPRIMER ---
     with tab3:
-        df_users = get_df('utilisateurs')
-        if not df_users.empty:
-            user_dict = df_users.apply(lambda r: f"{r['nom']} ({r['username']}) [ID:{r['id']}]", axis=1).tolist()
+        users = get_all_records('utilisateurs')
+        if not users:
+            st.info("Aucun utilisateur à modifier.")
+        else:
+            user_dict = []
+            for u in users:
+                display = f"{u.get('nom', '')} ({u.get('username', '')}) - Rôle: {u.get('role', '')} [ID:{u.get('id', '')}]"
+                user_dict.append(display)
+                
             user_choice = st.selectbox("Choisir un utilisateur", user_dict)
-            user_id = int(user_choice.split("[ID:")[1].replace("]", ""))
+            try:
+                user_id = int(user_choice.split("[ID:")[1].replace("]", ""))
+            except (IndexError, ValueError):
+                st.error("Erreur lors de la sélection de l'utilisateur.")
+                return
+                
             detail = get_record('utilisateurs', user_id)
+            
+            # Sécurité : vérifier si l'enregistrement existe
+            if detail is None:
+                st.error("Utilisateur introuvable dans la base de données.")
+                return
+            
             with st.form("modif_user"):
-                m_nom = st.text_input("Nom", value=detail['nom']); m_pseudo = st.text_input("Pseudo", value=detail['username'])
-                m_mdp = st.text_input("Nouveau Mot de passe (laisser vide si inchangé)", type="password")
-                m_role = st.selectbox("Rôle", ["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"], index=["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"].index(detail['role']))
-                if st.form_submit_button("💾 Sauvegarder"):
-                    updates = {"nom": m_nom, "username": m_pseudo, "role": m_role}
-                    if m_mdp: updates["password_hash"] = hashlib.sha256(m_mdp.encode()).hexdigest()
+                col1, col2 = st.columns(2)
+                with col1:
+                    m_nom = st.text_input("Nom *", value=detail.get('nom', ''))
+                    m_pseudo = st.text_input("Pseudo *", value=detail.get('username', ''))
+                with col2:
+                    m_mdp = st.text_input("Nouveau Mot de passe (laisser vide si pas de changement)", type="password", value="")
+                    roles = ["Administrateur", "Réceptionniste", "Chef atelier", "Tôlier", "Peintre", "Comptable"]
+                    current_role = detail.get('role', 'Administrateur')
+                    r_index = roles.index(current_role) if current_role in roles else 0
+                    m_role = st.selectbox("Rôle *", roles, index=r_index)
+                
+                save = st.form_submit_button("💾 Sauvegarder")
+                if save:
+                    updates = {
+                        "nom": m_nom,
+                        "username": m_pseudo,
+                        "role": m_role
+                    }
+                    # Si un nouveau mot de passe est fourni, on le hash et on met à jour
+                    if m_mdp:
+                        updates["password_hash"] = hashlib.sha256(m_mdp.encode()).hexdigest()
+                    
                     update_record('utilisateurs', user_id, updates)
-                    st.success("✅ Utilisateur modifié !"); st.rerun()
-            if st.button(f"🗑️ Supprimer {detail['nom']}", type="secondary"):
+                    st.success("✅ Utilisateur modifié !")
+                    st.rerun()
+            
+            st.markdown("---")
+            if st.button(f"🗑️ Supprimer {detail.get('nom', '')}", type="secondary"):
                 delete_record('utilisateurs', user_id)
-                st.success("Utilisateur supprimé !"); st.rerun()
+                st.success("Utilisateur supprimé !")
+                st.rerun()
 # ==========================================
 # 5. EXÉCUTION PRINCIPALE
 # ==========================================
