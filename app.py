@@ -1547,6 +1547,184 @@ def show_qr_dashboard(veh_id):
         if suivi: st.progress(int(suivi['progression']) / 100, text=f"Étape : {suivi['etape_actuelle']} ({o['statut']})")
     else: st.success("✅ Réparation Terminée ou Non commencée")
 
+def show_fournisseurs():
+    """Gestion complète des fournisseurs - 100% JSONDB"""
+    st.title("🏭 Gestion des Fournisseurs")
+
+    tab1, tab2, tab3 = st.tabs([
+        "📋 Liste des Fournisseurs",
+        "➕ Ajouter un Fournisseur",
+        "🔍 Modifier / Supprimer"
+    ])
+
+    # =========================================================================
+    # TAB 1 : LISTE DES FOURNISSEURS
+    # =========================================================================
+    with tab1:
+        df = get_df("fournisseurs")
+
+        if df is not None and not df.empty:
+            colonnes_affichage = [
+                col for col in ["nom", "telephone", "email", "adresse"]
+                if col in df.columns
+            ]
+
+            if colonnes_affichage:
+                st.dataframe(
+                    df[colonnes_affichage],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.warning("Aucune colonne affichable trouvée.")
+        else:
+            st.info("Aucun fournisseur enregistré pour le moment.")
+
+    # =========================================================================
+    # TAB 2 : AJOUTER UN FOURNISSEUR
+    # =========================================================================
+    with tab2:
+        with st.form("ajout_fournisseur"):
+            st.subheader("🆕 Nouveau Fournisseur")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                nom = st.text_input("Nom de l'entreprise / Fournisseur *")
+                telephone = st.text_input("Téléphone *")
+
+            with col2:
+                email = st.text_input("Email")
+                adresse = st.text_area("Adresse")
+
+            submitted = st.form_submit_button("Enregistrer le fournisseur")
+
+            if submitted:
+                nom_clean = nom.strip() if nom else ""
+                tel_clean = telephone.strip() if telephone else ""
+
+                if nom_clean and tel_clean:
+                    nouveau_fournisseur = {
+                        "nom": nom_clean,
+                        "telephone": tel_clean,
+                        "email": email.strip() if email else "",
+                        "adresse": adresse.strip() if adresse else ""
+                    }
+
+                    create_record("fournisseurs", nouveau_fournisseur)
+
+                    st.success(
+                        f"✅ Fournisseur '{nom_clean}' ajouté avec succès !"
+                    )
+                    st.rerun()
+                else:
+                    st.error("❌ Le Nom et le Téléphone sont obligatoires.")
+
+    # =========================================================================
+    # TAB 3 : MODIFIER / SUPPRIMER
+    # =========================================================================
+    with tab3:
+        fournisseurs = get_all_records("fournisseurs")
+
+        if fournisseurs is None or len(fournisseurs) == 0:
+            st.info(
+                "Veuillez ajouter des fournisseurs d'abord "
+                "pour pouvoir les modifier."
+            )
+            return
+
+        # Construction du sélecteur sans dépendre de colonnes Pandas
+        options_select = []
+        id_vers_index = {}
+
+        for idx, f in enumerate(fournisseurs):
+            f_id = f.get("id", idx)
+            f_nom = f.get("nom", "Sans nom")
+            label = f"{f_nom} (ID: {f_id})"
+            options_select.append(label)
+            id_vers_index[f_id] = idx
+
+        fournisseur_choice = st.selectbox(
+            "Choisir un fournisseur à modifier",
+            options_select
+        )
+
+        # Extraction sécurisée de l'ID depuis le label
+        try:
+            fournisseur_id = int(
+                fournisseur_choice.split("ID: ")[1].replace(")", "")
+            )
+        except (IndexError, ValueError):
+            st.error("❌ Impossible de déterminer l'identifiant du fournisseur.")
+            return
+
+        # Récupération du fournisseur par ID
+        fournisseur_data = get_record("fournisseurs", fournisseur_id)
+
+        if fournisseur_data is None:
+            st.error("❌ Fournisseur introuvable dans la base.")
+            return
+
+        # --- Formulaire de modification ---
+        st.markdown("---")
+        with st.form("modif_fournisseur"):
+            st.subheader(f"Modifier : {fournisseur_data.get('nom', '')}")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                m_nom = st.text_input(
+                    "Nom *",
+                    value=fournisseur_data.get("nom", "")
+                )
+                m_tel = st.text_input(
+                    "Téléphone *",
+                    value=fournisseur_data.get("telephone", "")
+                )
+
+            with col2:
+                m_email = st.text_input(
+                    "Email",
+                    value=fournisseur_data.get("email", "")
+                )
+                m_adresse = st.text_area(
+                    "Adresse",
+                    value=fournisseur_data.get("adresse", "")
+                )
+
+            save = st.form_submit_button("💾 Sauvegarder les modifications")
+
+            if save:
+                m_nom_clean = m_nom.strip() if m_nom else ""
+                m_tel_clean = m_tel.strip() if m_tel else ""
+
+                if m_nom_clean and m_tel_clean:
+                    donnees_modifiees = {
+                        "nom": m_nom_clean,
+                        "telephone": m_tel_clean,
+                        "email": m_email.strip() if m_email else "",
+                        "adresse": m_adresse.strip() if m_adresse else ""
+                    }
+
+                    update_record(
+                        "fournisseurs",
+                        fournisseur_id,
+                        donnees_modifiees
+                    )
+
+                    st.success("✅ Fournisseur modifié avec succès !")
+                    st.rerun()
+                else:
+                    st.error("❌ Le Nom et le Téléphone restent obligatoires.")
+
+        # --- Zone de suppression ---
+        st.markdown("---")
+        st.warning("⚠️ La suppression est définitive.")
+
+        nom_affichage = fournisseur_data.get("nom", "ce fournisseur")
+
+        if st.button(f"🗑️ Supprimer {nom_affichage}", type="secondary"):
+            delete_record("fournisseurs", fournisseur_id)
+            st.success(f"Fournisseur '{nom_affichage}' supprimé !")
+            st.rerun()
 def show_facturation():
     st.title("🧾 Facturation & Paiements")
     
