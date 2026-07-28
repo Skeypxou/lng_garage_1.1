@@ -191,12 +191,13 @@ COLOR_PALETTE = ['#1E3A8A', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE', '#10B981
 # 3. MENU DE NAVIGATION
 # ==========================================
 try:
-    st.sidebar.image("assets/logo.png", width=150)
+    # Affiche le logo depuis le dossier assets
+    st.sidebar.image("assets/logo.png", use_container_width=True)
 except:
-    st.sidebar.markdown("### 🚗 LNS GARAGE PRO")
+    # Texte de secours si l'image est introuvable
+    st.sidebar.markdown("<h3 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO</h3>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-
 menu_items = {
     "📊 Tableau de bord": "dashboard", "👤 Clients": "clients", "🚘 Véhicules": "vehicules",
     "📥 Réception Véhicule": "reception", "🛡️ Sinistres Assurance": "sinistres",
