@@ -1547,6 +1547,207 @@ def show_qr_dashboard(veh_id):
         if suivi: st.progress(int(suivi['progression']) / 100, text=f"Étape : {suivi['etape_actuelle']} ({o['statut']})")
     else: st.success("✅ Réparation Terminée ou Non commencée")
 
+def show_facturation():
+    st.title("🧾 Facturation & Paiements")
+    
+    tab1, tab2, tab3 = st.tabs(["📋 Liste des Factures", "➕ Transformer un Devis en Facture", "💰 Paiement & PDF"])
+    
+    # --- TAB 1 : LISTE ---
+    with tab1:
+        all_factures = get_all_records('factures')
+        
+        if not all_factures:
+            st.info("Aucune facture émise pour le moment.")
+        else:
+            data_to_display = []
+            for f in all_factures:
+                devis = get_record('devis', f.get('devis_id'))
+                vehicule = get_record('vehicules', devis.get('vehicule_id')) if devis else None
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                immat = vehicule.get('immatriculation', 'N/A') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                
+                total_ttc = float(devis.get('total_ttc', 0.0)) if devis else 0.0
+                montant_paye = float(f.get('montant_paye', 0.0))
+                reste_a_payer = total_ttc - montant_paye
+                
+                statut_paiement = f.get('statut_paiement', '')
+                if statut_paiement == "Payée": statut_icon = "🟢 Payée"
+                elif statut_paiement == "Partiellement payée": statut_icon = "🟡 Partielle"
+                elif statut_paiement == "Impayée": statut_icon = "🔴 Impayée"
+                else: statut_icon = statut_paiement
+                
+                data_to_display.append({
+                    "N° Facture": f.get('numero_facture', ''),
+                    "Client": client_name,
+                    "Immatriculation": immat,
+                    "Date": f.get('date_creation', ''),
+                    "Statut": statut_icon,
+                    "Total TTC": total_ttc,
+                    "Montant Payé": montant_paye,
+                    "Reste à Payer": reste_a_payer
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : TRANSFORMATION DEVIS -> FACTURE ---
+    with tab2:
+        st.subheader("🔄 Transformer un Devis validé en Facture")
+        st.warning("⚠️ Seuls les devis avec le statut 'Validé' ou 'En attente' peuvent être facturés.")
+        
+        all_devis = get_all_records('devis')
+        all_factures = get_all_records('factures')
+        
+        # Liste des IDs de devis déjà facturés
+        factured_devis_ids = [f.get('devis_id') for f in all_factures if f.get('devis_id') is not None]
+        
+        # Filtrer les devis disponibles
+        available_devis = [
+            d for d in all_devis 
+            if d.get('id') not in factured_devis_ids 
+            and d.get('statut', '') in ['Validé', 'En attente']
+        ]
+        
+        if not available_devis:
+            st.info("🎉 Tous les devis validés ont déjà été facturés, ou aucun devis n'est validé.")
+        else:
+            devis_dict = []
+            for d in available_devis:
+                vehicule = get_record('vehicules', d.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                total_ttc = d.get('total_ttc', 0)
+                
+                display = f"{d.get('numero_devis', '')} - {client_name} ({immat}) TTC: {total_ttc}€ [DevisID:{d.get('id', '')}]"
+                devis_dict.append(display)
+                
+            devis_choice = st.selectbox("Choisir le Devis à facturer", devis_dict)
+            devis_id = int(devis_choice.split("[DevisID:")[1].replace("]", ""))
+            
+            # Génération automatique du numéro de facture via JSONDB
+            default_numero_fac = get_next_numero("facture")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                numero_facture = st.text_input("N° Facture *", value=default_numero_fac)
+            with col2:
+                date_facture = st.date_input("Date d'émission *")
+                
+            if st.button("🧾 Créer la Facture"):
+                if numero_facture and date_facture:
+                    create_record('factures', {
+                        "devis_id": devis_id,
+                        "numero_facture": numero_facture,
+                        "date_creation": str(date_facture),
+                        "statut_paiement": "Impayée",
+                        "montant_paye": 0.0
+                    })
+                    st.success(f"✅ Facture {numero_facture} créée avec succès ! Elle est actuellement Impayée.")
+                    st.rerun()
+                else:
+                    st.error("❌ Le numéro et la date sont obligatoires.")
+
+    # --- TAB 3 : PAIEMENT & PDF ---
+    with tab3:
+        all_factures = get_all_records('factures')
+        
+        if not all_factures:
+            st.info("Aucune facture à gérer.")
+        else:
+            fac_dict = []
+            for f in all_factures:
+                devis = get_record('devis', f.get('devis_id'))
+                vehicule = get_record('vehicules', devis.get('vehicule_id')) if devis else None
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                statut = f.get('statut_paiement', '')
+                
+                display = f"{f.get('numero_facture', '')} - {client_name} (Statut: {statut}) [FacID:{f.get('id', '')}]"
+                fac_dict.append(display)
+                
+            fac_choice = st.selectbox("Choisir une Facture", fac_dict)
+            fac_id = int(fac_choice.split("[FacID:")[1].replace("]", ""))
+            
+            facture_data = get_record('factures', fac_id)
+            if facture_data is None:
+                st.error("Facture introuvable dans la base de données.")
+                return
+                
+            devis_info = get_record('devis', facture_data.get('devis_id'))
+            total_ttc = float(devis_info.get('total_ttc', 0.0)) if devis_info else 0.0
+            montant_paye_actuel = float(facture_data.get('montant_paye', 0.0))
+            reste_a_payer = total_ttc - montant_paye_actuel
+            
+            st.markdown("---")
+            st.subheader(f"💰 Gestion du Paiement : {facture_data.get('numero_facture', '')}")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total TTC", f"{total_ttc:.2f} €")
+            with col2:
+                st.metric("Montant Payé", f"{montant_paye_actuel:.2f} €")
+            with col3:
+                st.metric("Reste à Payer", f"{reste_a_payer:.2f} €", delta=f"-{reste_a_payer:.2f} €" if reste_a_payer > 0 else "0 €")
+            
+            with st.form("paiement_form"):
+                montant_paiement = st.number_input("Montant du paiement reçu (€)", min_value=0.0, format="%.2f")
+                submitted = st.form_submit_button("✅ Enregistrer le paiement")
+                
+                if submitted:
+                    if montant_paiement > 0:
+                        nouveau_montant_paye = montant_paye_actuel + montant_paiement
+                        
+                        if nouveau_montant_paye >= total_ttc:
+                            nouveau_statut = "Payée"
+                            nouveau_montant_paye = total_ttc
+                        elif nouveau_montant_paye > 0:
+                            nouveau_statut = "Partiellement payée"
+                        else:
+                            nouveau_statut = "Impayée"
+                            
+                        update_record('factures', fac_id, {
+                            "montant_paye": nouveau_montant_paye,
+                            "statut_paiement": nouveau_statut
+                        })
+                        st.success(f"✅ Paiement de {montant_paiement:.2f} € enregistré ! Statut : {nouveau_statut}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Le montant doit être supérieur à 0.")
+            
+            st.markdown("---")
+            st.subheader("📄 Générer la Facture PDF")
+            if st.button("📥 Télécharger la Facture PDF"):
+                if devis_info is None:
+                    st.error("Devis associé introuvable.")
+                    return
+                    
+                veh_info = get_record('vehicules', devis_info.get('vehicule_id'))
+                client_info = get_record('clients', veh_info.get('client_id')) if veh_info else None
+                
+                # Les détails sont déjà un dictionnaire dans JSONDB
+                details = devis_info.get('details', {"mo": [], "pieces": []})
+                
+                # Sécurisation des dictionnaires pour le PDF
+                safe_veh_info = veh_info if veh_info else {}
+                safe_client_info = client_info if client_info else {}
+                
+                # Appel à la fonction de génération PDF (doit être définie ailleurs dans ton code)
+                pdf_path = generate_facture_pdf(facture_data, devis_info, safe_client_info, safe_veh_info, details)
+                
+                with open(pdf_path, "rb") as f:
+                    pdf_bytes = f.read()
+                
+                st.download_button(
+                    label="⬇️ Cliquer ici pour télécharger le PDF",
+                    data=pdf_bytes,
+                    file_name=f"Facture_{facture_data.get('numero_facture', 'inconnu')}.pdf",
+                    mime="application/pdf"
+                )
 def show_caisse():
     st.title("💰 Gestion de Caisse & Trésorerie")
     
@@ -2353,7 +2554,6 @@ def show_statistiques():
             st.info("Aucun article en stock.")
     else:
         st.info("Aucun article en stock.")
-
 
 def show_qrcode():
     st.title("📱 QR Code")
