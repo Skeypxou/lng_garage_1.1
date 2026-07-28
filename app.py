@@ -1532,6 +1532,252 @@ def show_stock():
                 st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Aucune donnée statistique disponible pour le moment.")
+def show_accessoires():
+    """Catalogue & Gestion des Accessoires - 100% JSONDB"""
+    st.title("🔩 Catalogue & Gestion des Accessoires")
+
+    tab1, tab2, tab3 = st.tabs([
+        "📋 Catalogue & Marge",
+        "➕ Ajouter un Accessoire",
+        "🔄 Entrée / Sortie"
+    ])
+
+    # =========================================================================
+    # TAB 1 : CATALOGUE & MARGE
+    # =========================================================================
+    with tab1:
+        search_term = st.text_input(
+            "🔍 Rechercher un accessoire (nom ou référence)"
+        )
+
+        accessoires = get_all_records("accessoires")
+
+        if accessoires is None or len(accessoires) == 0:
+            st.info(
+                "Catalogue vide. Ajoutez vos accessoires courants "
+                "(clips, rivets, joints...) !"
+            )
+        else:
+            # Filtrage en Python si terme de recherche
+            if search_term:
+                terme = search_term.strip().lower()
+                accessoires_filtres = [
+                    a for a in accessoires
+                    if terme in str(a.get("reference", "")).lower()
+                    or terme in str(a.get("designation", "")).lower()
+                ]
+            else:
+                accessoires_filtres = accessoires
+
+            if len(accessoires_filtres) == 0:
+                st.info("Aucun accessoire ne correspond à votre recherche.")
+            else:
+                # Construction du DataFrame avec .get() systématique
+                lignes = []
+                for a in accessoires_filtres:
+                    pa = float(a.get("prix_achat", 0))
+                    pv = float(a.get("prix_vente", 0))
+                    qt = int(a.get("quantite", 0))
+                    seuil = int(a.get("seuil_alerte", 10))
+
+                    # Calcul marge en protégeant la division par zéro
+                    if pa > 0:
+                        marge_pourcent = round(((pv - pa) / pa) * 100, 1)
+                    else:
+                        marge_pourcent = 0.0
+
+                    marge_dzd = round(pv - pa, 2)
+
+                    # Alerte visuelle stock
+                    if qt == 0:
+                        stock_label = "⚫ Rupture"
+                    elif qt <= seuil:
+                        stock_label = "🔴 Bas"
+                    else:
+                        stock_label = "🟢 OK"
+
+                    lignes.append({
+                        "Stock": stock_label,
+                        "Référence": a.get("reference", ""),
+                        "Désignation": a.get("designation", ""),
+                        "Qté": qt,
+                        "Prix Achat": pa,
+                        "Prix Vente": pv,
+                        "Marge (dzd)": marge_dzd,
+                        "Marge (%)": marge_pourcent
+                    })
+
+                df_display = pd.DataFrame(lignes)
+                df_display = df_display.sort_values(by="Désignation")
+
+                st.dataframe(
+                    df_display,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+    # =========================================================================
+    # TAB 2 : AJOUTER UN ACCESSOIRE
+    # =========================================================================
+    with tab2:
+        with st.form("add_accessoire"):
+            st.subheader("🆕 Nouvel Accessoire au Catalogue")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                reference = st.text_input("Référence * (ex: CLP-UNIV)")
+                designation = st.text_input(
+                    "Désignation / Nom * (ex: Clip universel pare-chocs)"
+                )
+                quantite = st.number_input(
+                    "Quantité initiale *", min_value=0, step=1
+                )
+
+            with col2:
+                prix_achat = st.number_input(
+                    "Prix d'achat unitaire (dzd) *",
+                    min_value=0.0, format="%.2f"
+                )
+                prix_vente = st.number_input(
+                    "Prix de vente unitaire (dzd) *",
+                    min_value=0.0, format="%.2f"
+                )
+                seuil_alerte = st.number_input(
+                    "Seuil d'alerte stock",
+                    min_value=0, step=1, value=10
+                )
+
+            submitted = st.form_submit_button("Ajouter au Catalogue")
+
+            if submitted:
+                desig_clean = designation.strip() if designation else ""
+
+                if desig_clean and prix_achat > 0 and prix_vente > 0:
+                    nouvel_accessoire = {
+                        "reference": reference.strip() if reference else "",
+                        "designation": desig_clean,
+                        "prix_achat": prix_achat,
+                        "prix_vente": prix_vente,
+                        "quantite": int(quantite),
+                        "seuil_alerte": int(seuil_alerte)
+                    }
+
+                    create_record("accessoires", nouvel_accessoire)
+
+                    st.success(
+                        f"✅ Accessoire '{desig_clean}' ajouté au catalogue !"
+                    )
+                    st.rerun()
+                else:
+                    st.error(
+                        "❌ La désignation et les prix sont obligatoires."
+                    )
+
+    # =========================================================================
+    # TAB 3 : ENTRÉE / SORTIE DE STOCK
+    # =========================================================================
+    with tab3:
+        accessoires_stock = get_all_records("accessoires")
+
+        if accessoires_stock is None or len(accessoires_stock) == 0:
+            st.warning(
+                "Aucun accessoire dans le catalogue "
+                "pour effectuer un mouvement."
+            )
+            return
+
+        st.subheader("Mouvement de stock rapide")
+
+        # Construction du sélecteur sans dépendance Pandas
+        options_select = []
+        id_vers_quantite = {}
+
+        for a in accessoires_stock:
+            a_id = a.get("id", 0)
+            a_ref = a.get("reference", "")
+            a_desig = a.get("designation", "Sans nom")
+            a_qt = int(a.get("quantite", 0))
+
+            label = (
+                f"{a_ref} - {a_desig} "
+                f"(Stock: {a_qt}) [ID:{a_id}]"
+            )
+            options_select.append(label)
+            id_vers_quantite[a_id] = a_qt
+
+        art_choice = st.selectbox(
+            "Choisir l'accessoire", options_select
+        )
+
+        # Extraction sécurisée de l'ID
+        try:
+            art_id = int(
+                art_choice.split("[ID:")[1].replace("]", "")
+            )
+        except (IndexError, ValueError):
+            st.error(
+                "❌ Impossible de déterminer l'identifiant de l'accessoire."
+            )
+            return
+
+        # Récupération du stock actuel depuis le dictionnaire
+        current_qty = id_vers_quantite.get(art_id, 0)
+
+        col1, col2 = st.columns(2)
+
+        # --- ENTRÉE ---
+        with col1:
+            qty_add = st.number_input(
+                "➕ Quantité ENTRÉE (Réappro)",
+                min_value=0, step=1, key="acc_in"
+            )
+
+            if st.button("📥 Valider Entrée", key="btn_acc_in"):
+                if qty_add > 0:
+                    nouvelle_qt = current_qty + qty_add
+
+                    update_record(
+                        "accessoires",
+                        art_id,
+                        {"quantite": nouvelle_qt}
+                    )
+
+                    st.success(
+                        f"✅ {qty_add} unité(s) ajoutées au stock !"
+                    )
+                    st.rerun()
+                else:
+                    st.warning("Entrez une quantité supérieure à 0.")
+
+        # --- SORTIE ---
+        with col2:
+            qty_remove = st.number_input(
+                "➖ Quantité SORTIE (Conso)",
+                min_value=0, step=1, key="acc_out"
+            )
+
+            if st.button("📤 Valider Sortie", key="btn_acc_out"):
+                if qty_remove > 0:
+                    if qty_remove <= current_qty:
+                        nouvelle_qt = current_qty - qty_remove
+
+                        update_record(
+                            "accessoires",
+                            art_id,
+                            {"quantite": nouvelle_qt}
+                        )
+
+                        st.success(
+                            f"✅ {qty_remove} unité(s) sorties du stock !"
+                        )
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"❌ Stock insuffisant ! "
+                            f"Il n'y a que {current_qty} unité(s)."
+                        )
+                else:
+                    st.warning("Entrez une quantité supérieure à 0.")
 def show_qr_dashboard(veh_id):
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO - Suivi Véhicule</h1>", unsafe_allow_html=True)
     veh_info = get_record('vehicules', veh_id)
