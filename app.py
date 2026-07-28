@@ -2238,6 +2238,126 @@ def show_documents():
                                         delete_record('documents', d.get('id'))
                                         st.success("Document supprimé !")
                                         st.rerun()
+def show_statistiques():
+    st.title("📈 Statistiques Générales - LNS GARAGE PRO")
+    
+    st.markdown("---")
+    st.subheader("📊 Indicateurs Clés de Performance (KPI)")
+    
+    # Récupération des données globales via JSONDB
+    all_clients = get_all_records('clients')
+    all_vehicules = get_all_records('vehicules')
+    all_devis = get_all_records('devis')
+    all_ordres = get_all_records('reparations')
+    
+    nb_clients = len(all_clients)
+    nb_vehicules = len(all_vehicules)
+    nb_devis = len(all_devis)
+    nb_or_termine = len([o for o in all_ordres if o.get('statut', '') == 'Terminé'])
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(label="👥 Total Clients", value=nb_clients)
+    with col2:
+        st.metric(label="🚘 Total Véhicules", value=nb_vehicules)
+    with col3:
+        st.metric(label="📝 Devis Créés", value=nb_devis)
+    with col4:
+        st.metric(label="✅ Réparations Terminées", value=nb_or_termine)
+        
+    st.markdown("---")
+    st.subheader("💰 Analyse Financière")
+    
+    all_factures = get_all_records('factures')
+    
+    # Calculs financiers
+    ca_paye = 0.0
+    ca_total = 0.0
+    ca_impaye = 0.0
+    
+    for f in all_factures:
+        montant_paye = float(f.get('montant_paye', 0.0))
+        ca_paye += montant_paye
+        
+        devis_id = f.get('devis_id')
+        if devis_id is not None:
+            devis = get_record('devis', devis_id)
+            if devis:
+                total_ttc = float(devis.get('total_ttc', 0.0))
+                ca_total += total_ttc
+                
+                if f.get('statut_paiement', '') != 'Payée':
+                    ca_impaye += (total_ttc - montant_paye)
+                    
+    col5, col6, col7 = st.columns(3)
+    with col5:
+        st.metric(label="📈 CA Total Facturé", value=f"{ca_total:.2f} €")
+    with col6:
+        st.metric(label="✅ CA Encaissé", value=f"{ca_paye:.2f} €")
+    with col7:
+        delta_color = "inverse" if ca_impaye > 0 else "normal"
+        st.metric(label="⚠️ Reste à Encaisser", value=f"{ca_impaye:.2f} €", delta=f"{ca_impaye:.2f} € impayés", delta_color=delta_color)
+
+    st.markdown("---")
+    st.subheader("📉 Graphiques d'Activité")
+    
+    col_graph1, col_graph2 = st.columns(2)
+    
+    with col_graph1:
+        # 1. Réparations par Marque de véhicule
+        marques_counts = {}
+        for o in all_ordres:
+            vehicule = get_record('vehicules', o.get('vehicule_id'))
+            if vehicule:
+                marque = vehicule.get('marque', 'Inconnue')
+                marques_counts[marque] = marques_counts.get(marque, 0) + 1
+                
+        if marques_counts:
+            df_marques = pd.DataFrame(list(marques_counts.items()), columns=['marque', 'count'])
+            fig_marques = px.pie(df_marques, values='count', names='marque', title="Réparations par Marque", hole=0.4)
+            st.plotly_chart(fig_marques, use_container_width=True)
+        else:
+            st.info("Aucune réparation enregistrée pour afficher les marques.")
+            
+    with col_graph2:
+        # 2. Types de Dévis (Statuts)
+        devis_statuts = {}
+        for d in all_devis:
+            statut = d.get('statut', 'Inconnu')
+            devis_statuts[statut] = devis_statuts.get(statut, 0) + 1
+            
+        if devis_statuts:
+            df_devis_statut = pd.DataFrame(list(devis_statuts.items()), columns=['statut', 'count'])
+            fig_devis = px.bar(df_devis_statut, x='statut', y='count', title="Statut des Devis", color='statut')
+            st.plotly_chart(fig_devis, use_container_width=True)
+        else:
+            st.info("Aucun devis enregistré.")
+
+    st.markdown("---")
+    st.subheader("📦 Top Articles du Stock (Par Quantité)")
+    
+    all_stock = get_all_records('stock')
+    if all_stock:
+        # Création du DataFrame et tri
+        df_stock = pd.DataFrame(all_stock)
+        # Sécurisation des types numériques
+        df_stock['quantite'] = pd.to_numeric(df_stock.get('quantite', 0), errors='coerce').fillna(0)
+        
+        # Trier et prendre les 10 premiers
+        df_stock_top = df_stock.sort_values(by='quantite', ascending=False).head(10)
+        
+        if not df_stock_top.empty:
+            fig_stock = px.bar(df_stock_top, x='designation', y='quantite', title="Top 10 Articles en Stock", color='quantite')
+            st.plotly_chart(fig_stock, use_container_width=True)
+        else:
+            st.info("Aucun article en stock.")
+    else:
+        st.info("Aucun article en stock.")
+
+
+def show_qrcode():
+    st.title("📱 QR Code")
+    st.info("🚧 Ce module est prêt à être développé !")
 def show_qrcode():
     st.title("📱 Génération de QR Code Client")
     
