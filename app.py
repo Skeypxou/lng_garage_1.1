@@ -662,167 +662,194 @@ def show_devis():
     
     # --- TAB 1 : LISTE ---
     with tab1:
-        df_d = get_df('devis')
-        df_v = get_df('vehicules')
-        df_c = get_df('clients')
+        all_devis = get_all_records('devis')
         
-        if not df_d.empty and not df_v.empty and not df_c.empty:
-            # Fusion pour afficher les infos du véhicule et du client
-            df = pd.merge(df_d, df_v, left_on='vehicule_id', right_on='id', suffixes=('_d', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'].fillna('') + ' ' + df['prenom_c'].fillna('')
-            
-            st.dataframe(df[['numero_devis', 'immatriculation', 'Client', 'date_creation', 'statut', 'total_ttc']], use_container_width=True, hide_index=True)
-        else:
+        if not all_devis:
             st.info("Aucun devis créé pour le moment.")
+        else:
+            data_to_display = []
+            for d in all_devis:
+                vehicule = get_record('vehicules', d.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                
+                data_to_display.append({
+                    "N° Devis": d.get('numero_devis', ''),
+                    "Immatriculation": immat,
+                    "Client": client_name,
+                    "Date création": d.get('date_creation', ''),
+                    "Statut": d.get('statut', ''),
+                    "Total TTC": d.get('total_ttc', 0)
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
 
     # --- TAB 2 : CRÉATION ---
     with tab2:
-        df_v = get_df('vehicules')
-        df_c = get_df('clients')
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
         
-        if df_v.empty or df_c.empty:
+        if not vehicules or not clients:
             st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un devis !")
         else:
-            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-            # Sécurisation avec .get() pour éviter les KeyError
-            df_veh['display'] = df_veh.apply(lambda r: f"{r.get('immatriculation', '')} - {r.get('marque_v', '')} {r.get('modele_v', '')} ({r.get('nom_c', '')} {r.get('prenom_c', '')}) [ID:{r.get('id_v', '')}]", axis=1)
-            
-            veh_choice = st.selectbox("Véhicule concerné", df_veh['display'].tolist())
-            veh_id = int(veh_choice.split("[ID:")[1].replace("]", ""))
-            
-            with st.form("new_devis"):
-                col_date, col_num, col_statut = st.columns(3)
-                with col_date:
-                    date_creation = st.date_input("Date du devis *")
-                with col_num:
-                    # Génération automatique via le compteur JSONDB
-                    numero_devis = st.text_input("N° Devis", value=get_next_numero('devis'))
-                with col_statut:
-                    statut = st.selectbox("Statut", ["En attente", "Validé", "Refusé"])
-                
-                st.markdown("---")
-                st.subheader("🔧 Main d'œuvre")
-                mo_tasks = ["Débosselage", "Redressage", "Soudure", "Préparation", "Peinture", "Polissage"]
-                mo_details_list = []
-                
-                for task in mo_tasks:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        h = st.number_input(f"{task} (Heures)", min_value=0.0, step=0.5, key=f"mo_h_{task}")
-                    with col2:
-                        p = st.number_input(f"Prix / H", min_value=0.0, value=45.0, format="%.2f", key=f"mo_p_{task}")
-                    with col3:
-                        st.write(f"Total: **{h * p:.2f} dzd**")
-                    mo_details_list.append({"desc": task, "qty": h, "price": p, "total": h * p})
-                
-                st.markdown("---")
-                st.subheader("🔩 Pièces et Fournitures")
-                pieces_details_list = []
-                
-                for i in range(5):
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        ref = st.text_input(f"Réf. Pièce {i+1}", key=f"p_ref_{i}")
-                    with col2:
-                        des = st.text_input(f"Désignation Pièce {i+1}", key=f"p_des_{i}")
-                    with col3:
-                        qty = st.number_input(f"Qté Pièce {i+1}", min_value=0, step=1, key=f"p_qty_{i}")
-                    with col4:
-                        px = st.number_input(f"Prix Pièce {i+1}", min_value=0.0, format="%.2f", key=f"p_px_{i}")
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{v.get('marque', '')} "
+                        f"{v.get('modele', '')} "
+                        f"({client.get('nom', '')} "
+                        f"{client.get('prenom', '')}) [ID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
                     
-                    if qty > 0 and des:
-                        pieces_details_list.append({"ref": ref, "desc": des, "qty": qty, "price": px, "total": qty * px})
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                veh_choice = st.selectbox("Véhicule concerné", veh_dict)
+                veh_id = int(veh_choice.split("[ID:")[1].replace("]", ""))
                 
-                submitted = st.form_submit_button("📊 Calculer et Sauvegarder le Devis")
-                if submitted:
-                    # Calculs
-                    total_mo = sum(item['total'] for item in mo_details_list)
-                    total_pieces = sum(item['total'] for item in pieces_details_list)
-                    total_ht = total_mo + total_pieces
-                    tva = total_ht * 0.20
-                    total_ttc = total_ht + tva
+                with st.form("new_devis"):
+                    col_date, col_num, col_statut = st.columns(3)
+                    with col_date:
+                        date_creation = st.date_input("Date du devis *")
+                    with col_num:
+                        # Génération automatique via JSONDB
+                        numero_devis = st.text_input("N° Devis", value=get_next_numero("devis"))
+                    with col_statut:
+                        statut = st.selectbox("Statut", ["En attente", "Validé", "Refusé"])
                     
-                    # Sauvegarde via JSONDB (create_record)
-                    create_record('devis', {
-                        "vehicule_id": veh_id,
-                        "numero_devis": numero_devis,
-                        "date_creation": str(date_creation),
-                        "statut": statut,
-                        "total_pieces": total_pieces,
-                        "total_mo": total_mo,
-                        "tva": tva,
-                        "total_ttc": total_ttc,
-                        "details": {"mo": mo_details_list, "pieces": pieces_details_list} # Sauvegardé en dictionnaire natif
-                    })
-                    st.success(f"✅ Devis {numero_devis} sauvegardé ! Total TTC : {total_ttc:.2f} dzd")
+                    st.markdown("---")
+                    st.subheader("🔧 Main d'œuvre")
+                    mo_tasks = ["Débosselage", "Redressage", "Soudure", "Préparation", "Peinture", "Polissage"]
+                    mo_details_list = []
+                    
+                    for task in mo_tasks:
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            h = st.number_input(f"{task} (Heures)", min_value=0.0, step=0.5, key=f"mo_h_{task}")
+                        with col2:
+                            p = st.number_input(f"Prix / H", min_value=0.0, value=45.0, format="%.2f", key=f"mo_p_{task}")
+                        with col3:
+                            st.write(f"Total: **{h * p:.2f} dzd**")
+                        mo_details_list.append({"desc": task, "qty": h, "price": p, "total": h * p})
+                    
+                    st.markdown("---")
+                    st.subheader("🔩 Pièces et Fournitures")
+                    pieces_details_list = []
+                    
+                    for i in range(5):
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            ref = st.text_input(f"Réf. Pièce {i+1}", key=f"p_ref_{i}")
+                        with col2:
+                            des = st.text_input(f"Désignation Pièce {i+1}", key=f"p_des_{i}")
+                        with col3:
+                            qty = st.number_input(f"Qté Pièce {i+1}", min_value=0, step=1, key=f"p_qty_{i}")
+                        with col4:
+                            px = st.number_input(f"Prix Pièce {i+1}", min_value=0.0, format="%.2f", key=f"p_px_{i}")
+                        
+                        if qty > 0 and des:
+                            pieces_details_list.append({"ref": ref, "desc": des, "qty": qty, "price": px, "total": qty * px})
+                    
+                    submitted = st.form_submit_button("📊 Calculer et Sauvegarder le Devis")
+                    if submitted:
+                        total_mo = sum(item['total'] for item in mo_details_list)
+                        total_pieces = sum(item['total'] for item in pieces_details_list)
+                        total_ht = total_mo + total_pieces
+                        tva = total_ht * 0.20
+                        total_ttc = total_ht + tva
+                        
+                        # Sauvegarde via JSONDB (le dictionnaire details est sauvegardé natif, sans json.dumps)
+                        create_record('devis', {
+                            "vehicule_id": veh_id,
+                            "numero_devis": numero_devis,
+                            "date_creation": str(date_creation),
+                            "statut": statut,
+                            "total_pieces": total_pieces,
+                            "total_mo": total_mo,
+                            "tva": tva,
+                            "total_ttc": total_ttc,
+                            "details": {
+                                "mo": mo_details_list,
+                                "pieces": pieces_details_list
+                            }
+                        })
+                        st.success(f"✅ Devis {numero_devis} sauvegardé ! Total TTC : {total_ttc:.2f} dzd")
 
     # --- TAB 3 : VOIR / PDF / MODIFIER ---
     with tab3:
         all_devis = get_all_records('devis')
         
-        if all_devis:
-            df_v = get_df('vehicules')
-            df_c = get_df('clients')
-            
-            # Création de la liste déroulante sécurisée
+        if not all_devis:
+            st.info("Aucun devis à afficher pour le moment.")
+        else:
             devis_dict = []
             for d in all_devis:
-                veh_info = df_v[df_v['id'] == d['vehicule_id']]
-                immat = veh_info.iloc[0]['immatriculation'] if not veh_info.empty else "N/A"
+                vehicule = get_record('vehicules', d.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
                 
-                if not veh_info.empty:
-                    client_info = df_c[df_c['id'] == veh_info.iloc[0]['client_id']]
-                    client_name = f"{client_info.iloc[0]['nom']} {client_info.iloc[0]['prenom']}" if not client_info.empty else "Client inconnu"
-                else:
-                    client_name = "Client inconnu"
-                    
-                devis_dict.append(f"{d['numero_devis']} - {client_name} ({immat}) TTC: {d['total_ttc']}dzd [ID:{d['id']}]")
-            
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                
+                display = f"{d.get('numero_devis', '')} - {client_name} ({immat}) TTC: {d.get('total_ttc', 0)}dzd [ID:{d.get('id', '')}]"
+                devis_dict.append(display)
+                
             devis_choice = st.selectbox("Choisir un devis", devis_dict)
             devis_id = int(devis_choice.split("[ID:")[1].replace("]", ""))
             
-            # Récupération des enregistrements via JSONDB
+            # Récupération de l'enregistrement via JSONDB
             devis_info = get_record('devis', devis_id)
-            if devis_info:
-                veh_info = get_record('vehicules', devis_info['vehicule_id'])
-                client_info = get_record('clients', veh_info['client_id']) if veh_info else None
-                
-                st.write(f"**Statut actuel :** {devis_info['statut']} | **Total TTC :** {devis_info['total_ttc']} dzd")
-                
-                # Bouton Génération PDF
-                if st.button("📄 Générer / Télécharger le PDF"):
-                    # Les détails sont déjà un dictionnaire dans JSONDB, pas besoin de json.loads()
-                    details = devis_info.get('details', {"mo": [], "pieces": []})
-                    pdf_path = generate_devis_pdf(devis_info, client_info, veh_info, details)
-                    
-                    with open(pdf_path, "rb") as f:
-                        pdf_bytes = f.read()
-                    
-                    st.download_button(
-                        label="⬇️ Télécharger le Devis PDF",
-                        data=pdf_bytes,
-                        file_name=f"Devis_{devis_info['numero_devis']}.pdf",
-                        mime="application/pdf"
-                    )
-                
-                # Modifier le statut
-                with st.expander("🔄 Modifier le statut du devis"):
-                    statuts_possibles = ["En attente", "Validé", "Refusé", "Facturé"]
-                    current_statut = devis_info.get('statut', 'En attente')
-                    current_index = statuts_possibles.index(current_statut) if current_statut in statuts_possibles else 0
-                    
-                    new_statut = st.selectbox("Nouveau statut", statuts_possibles, index=current_index)
-                    if st.button("Sauvegarder le nouveau statut"):
-                        # Mise à jour via JSONDB
-                        update_record('devis', devis_id, {"statut": new_statut})
-                        st.success("Statut mis à jour !")
-                        st.rerun()
-            else:
+            
+            # Sécurité : vérifier si l'enregistrement existe
+            if devis_info is None:
                 st.error("Devis introuvable dans la base de données.")
-        else:
-            st.info("Aucun devis à afficher pour le moment.")
-
+                return
+                
+            veh_info = get_record('vehicules', devis_info.get('vehicule_id'))
+            client_info = get_record('clients', veh_info.get('client_id')) if veh_info else None
+            
+            # Affichage des infos
+            st.write(f"**Statut actuel :** {devis_info.get('statut', '')} | **Total TTC :** {devis_info.get('total_ttc', 0)} dzd")
+            
+            # Bouton Génération PDF
+            if st.button("📄 Générer / Télécharger le PDF"):
+                # Les détails sont déjà un dictionnaire dans JSONDB
+                details = devis_info.get('details', {"mo": [], "pieces": []})
+                
+                # Sécurité supplémentaire pour la génération PDF
+                safe_veh_info = veh_info if veh_info else {}
+                safe_client_info = client_info if client_info else {}
+                
+                pdf_path = generate_devis_pdf(devis_info, safe_client_info, safe_veh_info, details)
+                
+                with open(pdf_path, "rb") as f:
+                    pdf_bytes = f.read()
+                
+                st.download_button(
+                    label="⬇️ Télécharger le Devis PDF",
+                    data=pdf_bytes,
+                    file_name=f"Devis_{devis_info.get('numero_devis', 'inconnu')}.pdf",
+                    mime="application/pdf"
+                )
+            
+            # Modifier le statut
+            with st.expander("🔄 Modifier le statut du devis"):
+                statuts_possibles = ["En attente", "Validé", "Refusé", "Facturé"]
+                current_statut = devis_info.get('statut', 'En attente')
+                current_index = statuts_possibles.index(current_statut) if current_statut in statuts_possibles else 0
+                
+                new_statut = st.selectbox("Nouveau statut", statuts_possibles, index=current_index)
+                if st.button("Sauvegarder le nouveau statut"):
+                    # Mise à jour via JSONDB
+                    update_record('devis', devis_id, {"statut": new_statut})
+                    st.success("Statut mis à jour !")
+                    st.rerun()
 def show_ordres():
     st.title("🔧 Ordres de Réparation (OR)")
     
