@@ -379,83 +379,186 @@ def show_vehicules():
                         st.error("Immatriculation, Marque et Modèle sont obligatoires.")
 def show_reception():
     st.title("📥 Réception Véhicule")
-    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Nouvelle Réception", "🔍 Détails / Modifier"])
     
+    tab1, tab2, tab3 = st.tabs(["📋 Liste des Réceptions", "➕ Nouvelle Réception", "🔍 Détails / Modifier"])
+    
+    # --- TAB 1 : LISTE ---
     with tab1:
-        df_r = get_df('reception'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_r.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_r, df_v, left_on='vehicule_id', right_on='id', suffixes=('_r', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            st.dataframe(df[['date_entree', 'immatriculation', 'marque', 'Client', 'observations']], use_container_width=True, hide_index=True)
-        else: st.info("Aucune réception enregistrée.")
-
-    with tab2:
-        df_v = get_df('vehicules'); df_c = get_df('clients')
-        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de faire une réception !")
+        receptions = get_all_records('reception')
+        
+        if not receptions:
+            st.info("Aucune réception enregistrée pour le moment.")
         else:
-            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} {r['modele']} ({r['nom_c']}) [ID:{r['id_v']}]", axis=1)
-            veh_choice = st.selectbox("Véhicule reçu", df_veh['display'].tolist())
-            veh_id = int(veh_choice.split("[ID:")[1].replace("]", ""))
-            
-            with st.form("new_reception"):
-                col1, col2 = st.columns(2)
-                with col1: date_entree = st.date_input("Date d'entrée *"); kilometrage = st.number_input("Kilométrage à l'entrée", min_value=0, step=1)
-                with col2: niveau_carburant = st.selectbox("Niveau carburant", ["Plein", "3/4", "1/2", "1/4", "Vide", "Inconnu"])
-                observations = st.text_area("Observations / Description du problème")
+            data_to_display = []
+            for r in receptions:
+                vehicule = get_record('vehicules', r.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
                 
-                col3, col4, col5 = st.columns(3)
-                with col3: roue_secours = st.checkbox("Roue de secours"); cric = st.checkbox("Cric")
-                with col4: radio = st.checkbox("Radio / Autoradio"); documents = st.checkbox("Documents (CG, Assurance)")
-                with col5: clees = st.checkbox("Clés (doublon)")
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                marque = vehicule.get('marque', '') if vehicule else 'N/A'
+                modele = vehicule.get('modele', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
                 
-                signature_check = st.checkbox("Le client confirme la remise du véhicule et la véracité de la checklist")
-                signature_nom = st.text_input("Nom et Prénom du signataire (si checkbox coché)")
+                data_to_display.append({
+                    "Date entrée": r.get('date_entree', ''),
+                    "Immatriculation": immat,
+                    "Marque": marque,
+                    "Modèle": modele,
+                    "Client": client_name,
+                    "Observations": r.get('observations', '')
+                })
                 
-                if st.form_submit_button("📥 Enregistrer la Réception"):
-                    if date_entree and signature_check and signature_nom:
-                        create_record('reception', {"vehicule_id": veh_id, "date_entree": str(date_entree), "kilometrage": int(kilometrage), "niveau_carburant": niveau_carburant, "observations": observations, "roue_secours": int(roue_secours), "cric": int(cric), "radio": int(radio), "documents": int(documents), "clees": int(clees), "signature_client": signature_nom})
-                        st.success("✅ Fiche de réception enregistrée avec succès !")
-                    else: st.error("❌ La date, la confirmation de signature et le nom du signataire sont obligatoires.")
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
 
+    # --- TAB 2 : NOUVELLE RÉCEPTION ---
+    with tab2:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.error("⚠️ Vous devez ajouter un client et un véhicule avant de faire une réception !")
+        else:
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{v.get('marque', '')} "
+                        f"{v.get('modele', '')} "
+                        f"({client.get('nom', '')} "
+                        f"{client.get('prenom', '')}) [ID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
+            
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                veh_choice = st.selectbox("Véhicule reçu", veh_dict)
+                veh_id = int(veh_choice.split("[ID:")[1].replace("]", ""))
+                
+                with st.form("new_reception"):
+                    st.subheader("🚗 Informations d'entrée")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        date_entree = st.date_input("Date d'entrée *")
+                        kilometrage = st.number_input("Kilométrage à l'entrée", min_value=0, step=1)
+                    with col2:
+                        niveau_carburant = st.selectbox("Niveau carburant", ["Plein", "3/4", "1/2", "1/4", "Vide", "Inconnu"])
+                        
+                    observations = st.text_area("Observations / Description du problème par le client")
+                    
+                    st.subheader("✅ Checklist Véhicule")
+                    col3, col4, col5 = st.columns(3)
+                    with col3:
+                        roue_secours = st.checkbox("Roue de secours")
+                        cric = st.checkbox("Cric")
+                    with col4:
+                        radio = st.checkbox("Radio / Autoradio")
+                        documents = st.checkbox("Documents (CG, Assurance)")
+                    with col5:
+                        clees = st.checkbox("Clés (doublon)")
+                        
+                    st.subheader("✍️ Signature Client")
+                    signature_check = st.checkbox("Le client confirme la remise du véhicule et la véracité de la checklist")
+                    signature_nom = st.text_input("Nom et Prénom du signataire (si checkbox coché)")
+                    
+                    submitted = st.form_submit_button("📥 Enregistrer la Réception")
+                    if submitted:
+                        if date_entree and signature_check and signature_nom:
+                            create_record('reception', {
+                                "vehicule_id": veh_id,
+                                "date_entree": str(date_entree),
+                                "kilometrage": int(kilometrage),
+                                "niveau_carburant": niveau_carburant,
+                                "observations": observations,
+                                "roue_secours": int(roue_secours),
+                                "cric": int(cric),
+                                "radio": int(radio),
+                                "documents": int(documents),
+                                "clees": int(clees),
+                                "signature_client": signature_nom
+                            })
+                            st.success("✅ Fiche de réception enregistrée avec succès !")
+                        else:
+                            st.error("❌ La date, la confirmation de signature et le nom du signataire sont obligatoires.")
+
+    # --- TAB 3 : DÉTAILS / MODIFIER ---
     with tab3:
-        df_r = get_df('reception'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_r.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_r, df_v, left_on='vehicule_id', right_on='id', suffixes=('_r', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            df['display'] = df.apply(lambda r: f"{r['date_entree']} - {r['immatriculation']} ({r['Client']}) [ID:{r['id_r']}]", axis=1)
-            recep_choice = st.selectbox("Choisir une fiche de réception", df['display'].tolist())
+        receptions = get_all_records('reception')
+        
+        if not receptions:
+            st.info("Aucune réception à modifier pour le moment.")
+        else:
+            recep_dict = []
+            for r in receptions:
+                vehicule = get_record('vehicules', r.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                
+                display = f"{r.get('date_entree', '')} - {immat} ({client_name}) [ID:{r.get('id', '')}]"
+                recep_dict.append(display)
+                
+            recep_choice = st.selectbox("Choisir une fiche de réception", recep_dict)
             recep_id = int(recep_choice.split("[ID:")[1].replace("]", ""))
+            
             detail = get_record('reception', recep_id)
             
-            st.write(f"**Véhicule ID:** {detail['vehicule_id']} | **Date entrée:** {detail['date_entree']}")
-            st.write(f"**Kilométrage:** {detail['kilometrage']} km | **Carburant:** {detail['niveau_carburant']}")
-            st.write(f"**Observations:** {detail['observations']}")
+            if detail is None:
+                st.error("Fiche de réception introuvable dans la base de données.")
+                return
+            
+            st.write(f"**Véhicule ID:** {detail.get('vehicule_id', '')} | **Date entrée:** {detail.get('date_entree', '')}")
+            st.write(f"**Kilométrage:** {detail.get('kilometrage', 0)} km | **Carburant:** {detail.get('niveau_carburant', '')}")
+            st.write(f"**Observations:** {detail.get('observations', '')}")
+            
             st.markdown("---")
-            checklist_items = {"Roue de secours": detail['roue_secours'], "Cric": detail['cric'], "Radio": detail['radio'], "Documents": detail['documents'], "Clés": detail['clees']}
+            st.write("**Checklist :**")
+            checklist_items = {
+                "Roue de secours": detail.get('roue_secours', 0),
+                "Cric": detail.get('cric', 0),
+                "Radio": detail.get('radio', 0),
+                "Documents": detail.get('documents', 0),
+                "Clés": detail.get('clees', 0)
+            }
             for item, val in checklist_items.items():
-                st.write(f"{'✅' if val else '❌'} {item}")
-            st.write(f"**Signataire :** {detail['signature_client']}")
+                icon = "✅" if val else "❌"
+                st.write(f"{icon} {item}")
+                
+            st.write(f"**Signataire :** {detail.get('signature_client', '')}")
             
             with st.expander("🔧 Modifier ou Supprimer cette fiche"):
                 with st.form("modif_reception"):
-                    m_obs = st.text_area("Observations", value=detail['observations'])
-                    m_km = st.number_input("Kilométrage", value=int(detail['kilometrage']))
-                    m_roue = st.checkbox("Roue de secours", value=bool(detail['roue_secours']))
-                    m_cric = st.checkbox("Cric", value=bool(detail['cric']))
-                    m_radio = st.checkbox("Radio", value=bool(detail['radio']))
-                    m_docs = st.checkbox("Documents", value=bool(detail['documents']))
-                    m_clees = st.checkbox("Clés", value=bool(detail['clees']))
-                    if st.form_submit_button("Sauvegarder modifications"):
-                        update_record('reception', recep_id, {"observations": m_obs, "kilometrage": int(m_km), "roue_secours": int(m_roue), "cric": int(m_cric), "radio": int(m_radio), "documents": int(m_docs), "clees": int(m_clees)})
-                        st.success("Fiche modifiée !"); st.rerun()
-                if st.button("🗑️ Supprimer cette fiche", type="secondary"):
+                    m_obs = st.text_area("Observations", value=detail.get('observations', ''))
+                    m_km = st.number_input("Kilométrage", value=int(detail.get('kilometrage', 0)))
+                    
+                    m_roue = st.checkbox("Roue de secours", value=bool(detail.get('roue_secours', 0)))
+                    m_cric = st.checkbox("Cric", value=bool(detail.get('cric', 0)))
+                    m_radio = st.checkbox("Radio", value=bool(detail.get('radio', 0)))
+                    m_docs = st.checkbox("Documents", value=bool(detail.get('documents', 0)))
+                    m_clees = st.checkbox("Clés", value=bool(detail.get('clees', 0)))
+                    
+                    save = st.form_submit_button("Sauvegarder modifications")
+                    if save:
+                        update_record('reception', recep_id, {
+                            "observations": m_obs,
+                            "kilometrage": int(m_km),
+                            "roue_secours": int(m_roue),
+                            "cric": int(m_cric),
+                            "radio": int(m_radio),
+                            "documents": int(m_docs),
+                            "clees": int(m_clees)
+                        })
+                        st.success("Fiche modifiée !")
+                        st.rerun()
+                
+                if st.button("🗑️ Supprimer cette fiche de réception", type="secondary"):
                     delete_record('reception', recep_id)
-                    st.warning("Fiche supprimée !"); st.rerun()
-        else: st.info("Aucune réception à modifier.")
-
+                    st.warning("Fiche supprimée !")
+                    st.rerun()
 def show_sinistres():
     st.title("🛡️ Sinistres & Assurances")
     tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Nouveau Sinistre", "🔍 Détails / Modifier"])
