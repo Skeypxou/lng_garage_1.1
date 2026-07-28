@@ -1897,6 +1897,169 @@ def show_fournisseurs():
             delete_record("fournisseurs", fournisseur_id)
             st.success(f"Fournisseur '{nom_affichage}' supprimé !")
             st.rerun()
+def show_achats():
+    st.title("🛒 Gestion des Achats & Commandes")
+    
+    tab1, tab2, tab3 = st.tabs(["📋 Suivi des Commandes", "➕ Nouveau Bon de Commande", "📥 Réception & Intégration Stock"])
+    
+    # --- TAB 1 : LISTE ---
+    with tab1:
+        statut_filter = st.selectbox("Filtrer par statut", ["Tous", "Commandé", "En attente", "Reçu"], key="filter_achat")
+        
+        all_achats = get_all_records('achats')
+        
+        # Filtrage en mémoire
+        if statut_filter != "Tous":
+            all_achats = [a for a in all_achats if a.get('statut', '') == statut_filter]
+            
+        if not all_achats:
+            st.info("Aucune commande trouvée pour ce filtre.")
+        else:
+            data_to_display = []
+            for a in all_achats:
+                fournisseur = get_record('fournisseurs', a.get('fournisseur_id'))
+                fournisseur_nom = fournisseur.get('nom', 'N/A') if fournisseur else 'N/A'
+                
+                statut_val = a.get('statut', '')
+                if statut_val == "Commandé": statut_icon = "🟡 Commandé"
+                elif statut_val == "En attente": statut_icon = "⏸️ En attente"
+                elif statut_val == "Reçu": statut_icon = "✅ Reçu"
+                else: statut_icon = statut_val
+                
+                data_to_display.append({
+                    "N° BC": a.get('numero_bc', ''),
+                    "Fournisseur": fournisseur_nom,
+                    "Désignation": a.get('designation', ''),
+                    "Référence": a.get('reference', ''),
+                    "Qté": a.get('quantite', 0),
+                    "Montant Total": a.get('montant_total', 0.0),
+                    "Statut": statut_icon,
+                    "Date Commande": a.get('date_commande', '')
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : NOUVEAU BON DE COMMANDE ---
+    with tab2:
+        fournisseurs = get_all_records('fournisseurs')
+        if not fournisseurs:
+            st.error("⚠️ Vous devez d'abord ajouter des Fournisseurs (Module 11) avant de pouvoir commander !")
+        else:
+            fournisseur_dict = []
+            for f in fournisseurs:
+                display = f"{f.get('nom', '')} (ID: {f.get('id', '')})"
+                fournisseur_dict.append(display)
+                
+            with st.form("new_achat"):
+                st.subheader("🆕 Créer un Bon de Commande (BC)")
+                
+                # Génération automatique du numéro BC
+                all_achats = get_all_records('achats')
+                last_id_achat = max([a.get('id', 0) for a in all_achats], default=0)
+                default_numero_bc = f"BC-{last_id_achat+1:04d}"
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    fournisseur_choice = st.selectbox("Fournisseur *", fournisseur_dict)
+                    fournisseur_id = int(fournisseur_choice.split("ID: ")[1].replace(")", ""))
+                    numero_bc = st.text_input("N° Bon de Commande *", value=default_numero_bc)
+                    date_commande = st.date_input("Date de commande *")
+                    
+                with col2:
+                    designation = st.text_input("Désignation de l'article * (ex: Pare-chocs BMW)")
+                    reference = st.text_input("Référence fournisseur (ex: PCH-BMW-01)")
+                    quantite = st.number_input("Quantité commandée *", min_value=1, step=1)
+                    prix_unitaire = st.number_input("Prix unitaire d'achat (€) *", min_value=0.0, format="%.2f")
+                    
+                notes = st.text_area("Notes / Instructions pour le fournisseur")
+                
+                submitted = st.form_submit_button("🛒 Valider la Commande")
+                if submitted:
+                    if designation and quantite and prix_unitaire and numero_bc:
+                        montant_total = float(quantite) * float(prix_unitaire)
+                        create_record('achats', {
+                            "fournisseur_id": fournisseur_id,
+                            "numero_bc": numero_bc,
+                            "date_commande": str(date_commande),
+                            "date_reception": None,
+                            "statut": "Commandé",
+                            "designation": designation,
+                            "reference": reference,
+                            "quantite": int(quantite),
+                            "prix_unitaire": float(prix_unitaire),
+                            "montant_total": montant_total,
+                            "notes": notes
+                        })
+                        st.success(f"✅ Bon de Commande {numero_bc} créé ! Montant : {montant_total:.2f} €")
+                        st.rerun()
+                    else:
+                        st.error("❌ Les champs Fournisseur, Désignation, Quantité et Prix sont obligatoires.")
+
+    # --- TAB 3 : RÉCEPTION & INTÉGRATION STOCK ---
+    with tab3:
+        st.subheader("📥 Réceptionner une commande et l'intégrer au Stock")
+        st.info("💡 Quand tu réceptionnes une commande, l'application va automatiquement chercher l'article dans ton Stock (Module 9) par sa référence et ajouter la quantité. Si l'article n'existe pas encore, elle le créera !")
+        
+        all_achats = get_all_records('achats')
+        achats_a_recevoir = [a for a in all_achats if a.get('statut', '') in ['Commandé', 'En attente']]
+        
+        if not achats_a_recevoir:
+            st.success("🎉 Toutes les commandes ont été réceptionnées !")
+        else:
+            achat_dict = []
+            for a in achats_a_recevoir:
+                display = f"{a.get('numero_bc', '')} - {a.get('designation', '')} (Qté: {a.get('quantite', 0)}) [AchatID:{a.get('id', '')}]"
+                achat_dict.append(display)
+                
+            achat_choice = st.selectbox("Commande à réceptionner", achat_dict)
+            achat_id = int(achat_choice.split("[AchatID:")[1].replace("]", ""))
+            
+            achat_data = get_record('achats', achat_id)
+            if achat_data is None:
+                st.error("Commande introuvable dans la base de données.")
+                return
+                
+            ref_article = achat_data.get('reference', '')
+            qty_article = int(achat_data.get('quantite', 0))
+            designation_article = achat_data.get('designation', '')
+            
+            if st.button(f"✅ Confirmer la réception de {qty_article} x {designation_article}"):
+                # 1. Mettre à jour le statut de l'achat
+                update_record('achats', achat_id, {
+                    "statut": "Reçu",
+                    "date_reception": str(date.today())
+                })
+                
+                # 2. Vérifier si l'article existe déjà dans le stock par sa référence
+                all_stock = get_all_records('stock')
+                stock_item = next((s for s in all_stock if s.get('reference', '') == ref_article), None)
+                
+                if stock_item is not None:
+                    # L'article existe : on augmente la quantité
+                    new_qty = int(stock_item.get('quantite', 0)) + qty_article
+                    update_record('stock', stock_item.get('id'), {
+                        "quantite": new_qty
+                    })
+                    st.success(f"📦 Stock mis à jour ! +{qty_article} unités ajoutées à l'article existant (Réf: {ref_article}).")
+                else:
+                    # L'article n'existe pas dans le stock : on le crée avec un prix de vente estimé (double du prix d'achat)
+                    prix_achat = float(achat_data.get('prix_unitaire', 0.0))
+                    prix_vente_estime = prix_achat * 2.0 # Marge standard de 100%
+                    type_article = "Pièce"
+                    
+                    create_record('stock', {
+                        "type_article": type_article,
+                        "reference": ref_article,
+                        "designation": designation_article,
+                        "quantite": qty_article,
+                        "prix_achat": prix_achat,
+                        "prix_vente": prix_vente_estime,
+                        "seuil_alerte": 2
+                    })
+                    st.success(f"🆕 Nouvel article créé dans le Stock : {designation_article} (Qté: {qty_article}, Prix vente estimé: {prix_vente_estime:.2f} €).")
+                
+                st.rerun()
 def show_facturation():
     st.title("🧾 Facturation & Paiements")
     
