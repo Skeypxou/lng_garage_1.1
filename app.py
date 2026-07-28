@@ -2068,6 +2068,176 @@ def show_employes():
                               color='Fonction', text='CA Généré')
             fig_perf.update_traces(texttemplate='%{text:.2f} €', textposition='outside')
             st.plotly_chart(fig_perf, use_container_width=True)
+def show_documents():
+    st.title("📂 Coffre-Fort Documentaire")
+    
+    # S'assurer que le dossier documents existe physiquement
+    if not os.path.exists("documents"):
+        os.makedirs("documents")
+    
+    tab1, tab2, tab3 = st.tabs(["🗄️ Tous les Documents", "➕ Ajouter un Document", "🔍 Documents d'un Véhicule"])
+    
+    # --- TAB 1 : LISTE GLOBALE ---
+    with tab1:
+        filtre_type = st.selectbox("Filtrer par type", ["Tous", "Carte grise", "Assurance", "Expertise", "Facture", "Contrat", "Autre"], key="filter_doc_type")
+        
+        all_docs = get_all_records('documents')
+        
+        # Filtrage en mémoire
+        if filtre_type != "Tous":
+            all_docs = [d for d in all_docs if d.get('type_document', '') == filtre_type]
+            
+        if not all_docs:
+            st.info("Aucun document archivé pour le moment.")
+        else:
+            for index, d in enumerate(all_docs):
+                vehicule = get_record('vehicules', d.get('vehicule_id'))
+                immat = vehicule.get('immatriculation', 'N/A') if vehicule else 'N/A'
+                
+                col1, col2, col3, col4 = st.columns([2, 2, 3, 1])
+                with col1:
+                    st.write(f"**{immat}**")
+                with col2:
+                    st.write(f"{d.get('type_document', '')}")
+                with col3:
+                    st.write(f"{d.get('nom_fichier', '')} ({d.get('date_upload', '')})")
+                with col4:
+                    # Bouton de téléchargement
+                    filepath = d.get('chemin_fichier', '')
+                    if filepath and os.path.exists(filepath):
+                        with open(filepath, "rb") as f:
+                            file_bytes = f.read()
+                        st.download_button(
+                            label="⬇️", 
+                            data=file_bytes, 
+                            file_name=d.get('nom_fichier', 'document'),
+                            key=f"dl_{d.get('id', index)}"
+                        )
+                    else:
+                        st.warning("Fichier absent")
+
+    # --- TAB 2 : AJOUTER ---
+    with tab2:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.error("⚠️ Vous devez ajouter un client et un véhicule avant d'importer des documents !")
+        else:
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{v.get('marque', '')} {v.get('modele', '')} "
+                        f"({client.get('nom', '')} {client.get('prenom', '')}) [VehID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
+                    
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                veh_choice = st.selectbox("Véhicule concerné *", veh_dict)
+                veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+                
+                type_document = st.selectbox("Type de document *", ["Carte grise", "Assurance", "Expertise", "Facture", "Contrat", "Autre"])
+                
+                # Upload de fichier (pdf, images, word)
+                uploaded_file = st.file_uploader("Choisir un document", type=["pdf", "png", "jpg", "jpeg", "docx", "xlsx"])
+                
+                if uploaded_file is not None:
+                    st.success(f"Fichier sélectionné : {uploaded_file.name}")
+                    
+                    if st.button("💾 Archiver le document"):
+                        # Générer un nom de fichier unique pour le stockage local
+                        timestamp = int(time.time())
+                        safe_filename = f"veh_{veh_id}_{type_document.replace(' ', '_')}_{timestamp}_{uploaded_file.name}"
+                        filepath = os.path.join("documents", safe_filename)
+                        
+                        # Sauvegarder physiquement le fichier
+                        try:
+                            with open(filepath, "wb") as f:
+                                f.write(uploaded_file.getbuffer())
+                                
+                            # Sauvegarder les infos via JSONDB
+                            create_record('documents', {
+                                "vehicule_id": veh_id,
+                                "type_document": type_document,
+                                "nom_fichier": uploaded_file.name,
+                                "chemin_fichier": filepath,
+                                "date_upload": str(date.today())
+                            })
+                            st.success(f"✅ Document '{uploaded_file.name}' archivé avec succès dans le coffre-fort !")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur lors de l'archivage : {e}")
+
+    # --- TAB 3 : DOCUMENTS D'UN VÉHICULE ---
+    with tab3:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.info("Aucun véhicule enregistré.")
+        else:
+            veh_dict_detail = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = f"{v.get('immatriculation', '')} ({client.get('nom', '')} {client.get('prenom', '')}) [VehID:{v.get('id', '')}]"
+                    veh_dict_detail.append(display)
+                    
+            if not veh_dict_detail:
+                st.info("Aucun véhicule à afficher.")
+            else:
+                veh_choice_detail = st.selectbox("Choisir un véhicule pour voir ses documents", veh_dict_detail)
+                veh_id_detail = int(veh_choice_detail.split("[VehID:")[1].replace("]", ""))
+                
+                # Récupérer les documents de ce véhicule via JSONDB
+                all_docs = get_all_records('documents')
+                veh_docs = [d for d in all_docs if d.get('vehicule_id') == veh_id_detail]
+                
+                if not veh_docs:
+                    st.info("Aucun document archivé pour ce véhicule pour le moment.")
+                else:
+                    # Afficher les documents groupés par type
+                    types_docs = ["Carte grise", "Assurance", "Expertise", "Facture", "Contrat", "Autre"]
+                    
+                    for type_doc in types_docs:
+                        docs_type = [d for d in veh_docs if d.get('type_document', '') == type_doc]
+                        if docs_type:
+                            st.subheader(f"📄 {type_doc}")
+                            
+                            for index, d in enumerate(docs_type):
+                                col1, col2, col3 = st.columns([5, 1, 1])
+                                with col1:
+                                    st.write(f"- {d.get('nom_fichier', '')} (Ajouté le : {d.get('date_upload', '')})")
+                                with col2:
+                                    # Bouton Télécharger
+                                    filepath = d.get('chemin_fichier', '')
+                                    if filepath and os.path.exists(filepath):
+                                        with open(filepath, "rb") as f:
+                                            file_bytes = f.read()
+                                        st.download_button(
+                                            label="⬇️ PDF", 
+                                            data=file_bytes, 
+                                            file_name=d.get('nom_fichier', 'document'),
+                                            key=f"dlv_{d.get('id', index)}"
+                                        )
+                                    else:
+                                        st.error("Fichier manquant")
+                                with col3:
+                                    # Bouton Supprimer
+                                    if st.button("🗑️", key=f"del_{d.get('id', index)}"):
+                                        filepath_to_del = d.get('chemin_fichier', '')
+                                        if filepath_to_del and os.path.exists(filepath_to_del):
+                                            os.remove(filepath_to_del)
+                                        
+                                        # Suppression de la DB via JSONDB
+                                        delete_record('documents', d.get('id'))
+                                        st.success("Document supprimé !")
+                                        st.rerun()
 def show_qrcode():
     st.title("📱 Génération de QR Code Client")
     
