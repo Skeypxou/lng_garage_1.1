@@ -1999,7 +1999,7 @@ def show_achats():
                             "montant_total": montant_total,
                             "notes": notes
                         })
-                        st.success(f"✅ Bon de Commande {numero_bc} créé ! Montant : {montant_total:.2f} €")
+                        st.success(f"✅ Bon de Commande {numero_bc} créé ! Montant : {montant_total:.2f}DA")
                         st.rerun()
                     else:
                         st.error("❌ Les champs Fournisseur, Désignation, Quantité et Prix sont obligatoires.")
@@ -2065,7 +2065,7 @@ def show_achats():
                         "prix_vente": prix_vente_estime,
                         "seuil_alerte": 2
                     })
-                    st.success(f"🆕 Nouvel article créé dans le Stock : {designation_article} (Qté: {qty_article}, Prix vente estimé: {prix_vente_estime:.2f} €).")
+                    st.success(f"🆕 Nouvel article créé dans le Stock : {designation_article} (Qté: {qty_article}, Prix vente estimé: {prix_vente_estime:.2f}DA).")
                 
                 st.rerun()
 def show_facturation():
@@ -2209,11 +2209,11 @@ def show_facturation():
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total TTC", f"{total_ttc:.2f} €")
+                st.metric("Total TTC", f"{total_ttc:.2f}DA")
             with col2:
-                st.metric("Montant Payé", f"{montant_paye_actuel:.2f} €")
+                st.metric("Montant Payé", f"{montant_paye_actuel:.2f}DA")
             with col3:
-                st.metric("Reste à Payer", f"{reste_a_payer:.2f} €", delta=f"-{reste_a_payer:.2f} €" if reste_a_payer > 0 else "0 €")
+                st.metric("Reste à Payer", f"{reste_a_payer:.2f}DA", delta=f"-{reste_a_payer:.2f}DA" if reste_a_payer > 0 else "0DA")
             
             with st.form("paiement_form"):
                 montant_paiement = st.number_input("Montant du paiement reçu (€)", min_value=0.0, format="%.2f")
@@ -2235,7 +2235,7 @@ def show_facturation():
                             "montant_paye": nouveau_montant_paye,
                             "statut_paiement": nouveau_statut
                         })
-                        st.success(f"✅ Paiement de {montant_paiement:.2f} € enregistré ! Statut : {nouveau_statut}")
+                        st.success(f"✅ Paiement de {montant_paiement:.2f}DA enregistré ! Statut : {nouveau_statut}")
                         st.rerun()
                     else:
                         st.error("❌ Le montant doit être supérieur à 0.")
@@ -2318,9 +2318,9 @@ def show_caisse():
                 montant = float(t.get('montant', 0.0))
                 type_trans = t.get('type_transaction', '')
                 if type_trans == 'Entrée':
-                    montant_fmt = f"+{montant:.2f} €"
+                    montant_fmt = f"+{montant:.2f}DA"
                 else:
-                    montant_fmt = f"-{montant:.2f} €"
+                    montant_fmt = f"-{montant:.2f}DA"
                     
                 data_to_display.append({
                     "Date": t.get('date_transaction', ''),
@@ -2364,7 +2364,7 @@ def show_caisse():
                         "description": description,
                         "categorie": categorie
                     })
-                    st.success(f"✅ Transaction de {montant:.2f} € ({db_type}) enregistrée dans la caisse !")
+                    st.success(f"✅ Transaction de {montant:.2f}DA ({db_type}) enregistrée dans la caisse !")
                 else:
                     st.error("❌ Le montant, la date et la description sont obligatoires.")
 
@@ -2388,12 +2388,12 @@ def show_caisse():
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric(label="📈 Total Entrées", value=f"{total_entrees:.2f} €")
+                st.metric(label="📈 Total Entrées", value=f"{total_entrees:.2f}DA")
             with col2:
-                st.metric(label="📉 Total Sorties", value=f"{total_sorties:.2f} €")
+                st.metric(label="📉 Total Sorties", value=f"{total_sorties:.2f}DA")
             with col3:
                 delta_color = "normal" if solde_actuel >= 0 else "inverse"
-                st.metric(label="💎 SOLDE NET", value=f"{solde_actuel:.2f} €", delta=f"{solde_actuel:.2f} €", delta_color=delta_color)
+                st.metric(label="💎 SOLDE NET", value=f"{solde_actuel:.2f}DA", delta=f"{solde_actuel:.2f}DA", delta_color=delta_color)
                 
             st.markdown("---")
             
@@ -2640,7 +2640,7 @@ def show_employes():
                     "Nom": e.get('nom', ''),
                     "Fonction": e.get('fonction', ''),
                     "Téléphone": e.get('telephone', ''),
-                    "Salaire (€)": f"{salaire:.2f} €"
+                    "Salaire (€)": f"{salaire:.2f}DA"
                 })
                 
             df_display = pd.DataFrame(data_to_display)
@@ -2770,12 +2770,12 @@ def show_employes():
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric(label="💸 Total Salaires", value=f"{total_salaire:.2f} €")
+                st.metric(label="💸 Total Salaires", value=f"{total_salaire:.2f}DA")
             with col2:
-                st.metric(label="📈 CA Généré par l'atelier", value=f"{total_ca_team:.2f} €")
+                st.metric(label="📈 CA Généré par l'atelier", value=f"{total_ca_team:.2f}DA")
             with col3:
                 delta_color = "normal" if roi_net >= 0 else "inverse"
-                st.metric(label="💎 Rentabilité Atelier (CA - Salaires)", value=f"{roi_net:.2f} €", delta=f"{roi_net:.2f} €", delta_color=delta_color)
+                st.metric(label="💎 Rentabilité Atelier (CA - Salaires)", value=f"{roi_net:.2f}DA", delta=f"{roi_net:.2f}DA", delta_color=delta_color)
                 
             st.markdown("---")
             st.subheader("Détail par Employé")
@@ -2788,7 +2788,7 @@ def show_employes():
             fig_perf = px.bar(df_perf_sorted, x='Nom', y='CA Généré', 
                               title="CA Généré par Employé (OR Terminés)",
                               color='Fonction', text='CA Généré')
-            fig_perf.update_traces(texttemplate='%{text:.2f} €', textposition='outside')
+            fig_perf.update_traces(texttemplate='%{text:.2f}DA', textposition='outside')
             st.plotly_chart(fig_perf, use_container_width=True)
 def show_documents():
     st.title("📂 Coffre-Fort Documentaire")
@@ -3013,12 +3013,12 @@ def show_statistiques():
                     
     col5, col6, col7 = st.columns(3)
     with col5:
-        st.metric(label="📈 CA Total Facturé", value=f"{ca_total:.2f} €")
+        st.metric(label="📈 CA Total Facturé", value=f"{ca_total:.2f}DA")
     with col6:
-        st.metric(label="✅ CA Encaissé", value=f"{ca_paye:.2f} €")
+        st.metric(label="✅ CA Encaissé", value=f"{ca_paye:.2f}DA")
     with col7:
         delta_color = "inverse" if ca_impaye > 0 else "normal"
-        st.metric(label="⚠️ Reste à Encaisser", value=f"{ca_impaye:.2f} €", delta=f"{ca_impaye:.2f} € impayés", delta_color=delta_color)
+        st.metric(label="⚠️ Reste à Encaisser", value=f"{ca_impaye:.2f}DA", delta=f"{ca_impaye:.2f}DA impayés", delta_color=delta_color)
 
     st.markdown("---")
     st.subheader("📉 Graphiques d'Activité")
