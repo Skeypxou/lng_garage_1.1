@@ -1699,6 +1699,206 @@ def show_caisse():
                                          title="Répartition des Dépenses par Catégorie",
                                          hole=0.4)
                     st.plotly_chart(fig_expenses, use_container_width=True)
+def show_photos():
+    st.title("📸 Galerie Photos - Avant / Pendant / Après")
+    
+    # S'assurer que le dossier photos existe
+    if not os.path.exists("photos"):
+        os.makedirs("photos")
+    
+    tab1, tab2, tab3 = st.tabs(["🖼️ Galerie Globale", "➕ Ajouter des Photos", "🔍 Galerie Véhicule"])
+    
+    # --- TAB 1 : GALERIE GLOBALE ---
+    with tab1:
+        filtre_type = st.selectbox("Filtrer par type", ["Tous", "Avant réparation", "Pendant réparation", "Après réparation"], key="filter_photo_type")
+        
+        all_photos = get_all_records('photos')
+        
+        # Filtrage en mémoire
+        if filtre_type != "Tous":
+            all_photos = [p for p in all_photos if p.get('type_photo', '') == filtre_type]
+            
+        if not all_photos:
+            st.info("Aucune photo dans la galerie pour le moment.")
+        else:
+            # Affichage en grille (3 colonnes)
+            cols = st.columns(3)
+            for index, p in enumerate(all_photos):
+                col_idx = index % 3
+                with cols[col_idx]:
+                    vehicule = get_record('vehicules', p.get('vehicule_id'))
+                    immat = vehicule.get('immatriculation', 'N/A') if vehicule else 'N/A'
+                    
+                    try:
+                        st.image(p.get('chemin_fichier', ''), caption=f"{immat} - {p.get('type_photo', '')} ({p.get('date_upload', '')})")
+                    except:
+                        st.error(f"Image introuvable : {p.get('chemin_fichier', '')}")
+
+    # --- TAB 2 : AJOUTER DES PHOTOS ---
+    with tab2:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.error("⚠️ Vous devez ajouter un client et un véhicule avant d'importer des photos !")
+        else:
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{v.get('marque', '')} "
+                        f"{v.get('modele', '')} "
+                        f"({client.get('nom', '')} {client.get('prenom', '')}) [VehID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
+                    
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                veh_choice = st.selectbox("Véhicule concerné *", veh_dict)
+                veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+                
+                type_photo = st.selectbox("Type de photo *", ["Avant réparation", "Pendant réparation", "Après réparation"])
+                
+                # Upload multiple files
+                uploaded_files = st.file_uploader("Choisir des photos", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+                
+                if uploaded_files:
+                    st.warning(f"Vous avez sélectionné {len(uploaded_files)} photo(s). Cliquez sur le bouton ci-dessous pour les sauvegarder.")
+                    
+                    if st.button("💾 Sauvegarder les photos sur le serveur"):
+                        # Récupération du véhicule pour nommer le fichier
+                        selected_veh = get_record('vehicules', veh_id)
+                        if selected_veh is None:
+                            st.error("Véhicule introuvable.")
+                            return
+                            
+                        safe_immat = selected_veh.get('immatriculation', 'unknown').replace(" ", "_")
+                        count_saved = 0
+                        
+                        for uploaded_file in uploaded_files:
+                            # Générer un nom de fichier unique
+                            timestamp = int(time.time())
+                            extension = uploaded_file.name.split('.')[-1]
+                            filename = f"{safe_immat}_{type_photo.split(' ')[0]}_{timestamp}_{count_saved}.{extension}"
+                            
+                            filepath = os.path.join("photos", filename)
+                            
+                            # Sauvegarder physiquement le fichier
+                            try:
+                                with open(filepath, "wb") as f:
+                                    f.write(uploaded_file.getbuffer())
+                                    
+                                # Sauvegarder le chemin via JSONDB
+                                create_record('photos', {
+                                    "vehicule_id": veh_id,
+                                    "type_photo": type_photo,
+                                    "chemin_fichier": filepath,
+                                    "date_upload": str(date.today())
+                                })
+                                count_saved += 1
+                            except Exception as e:
+                                st.error(f"Erreur lors de la sauvegarde de {uploaded_file.name}: {e}")
+                                
+                        st.success(f"✅ {count_saved} photo(s) ajoutées avec succès dans la galerie !")
+                        st.rerun()
+
+    # --- TAB 3 : GALERIE VÉHICULE ---
+    with tab3:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.info("Aucun véhicule enregistré.")
+        else:
+            veh_dict_detail = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = f"{v.get('immatriculation', '')} ({client.get('nom', '')} {client.get('prenom', '')}) [VehID:{v.get('id', '')}]"
+                    veh_dict_detail.append(display)
+                    
+            if not veh_dict_detail:
+                st.info("Aucun véhicule à afficher.")
+            else:
+                veh_choice_detail = st.selectbox("Choisir un véhicule pour voir sa galerie", veh_dict_detail)
+                veh_id_detail = int(veh_choice_detail.split("[VehID:")[1].replace("]", ""))
+                
+                # Récupérer les photos de ce véhicule via JSONDB
+                all_photos = get_all_records('photos')
+                veh_photos = [p for p in all_photos if p.get('vehicule_id') == veh_id_detail]
+                
+                if not veh_photos:
+                    st.info("Aucune photo enregistrée pour ce véhicule pour le moment.")
+                else:
+                    # Photos Avant
+                    st.subheader("🟢 Avant Réparation")
+                    photos_avant = [p for p in veh_photos if p.get('type_photo', '') == "Avant réparation"]
+                    if photos_avant:
+                        cols_avant = st.columns(min(len(photos_avant), 3))
+                        for i, p in enumerate(photos_avant):
+                            with cols_avant[i % 3]:
+                                try: st.image(p.get('chemin_fichier', ''))
+                                except: st.error("Image introuvable")
+                    else:
+                        st.info("Aucune photo 'Avant' pour ce véhicule.")
+                        
+                    # Photos Pendant
+                    st.subheader("🟡 Pendant Réparation")
+                    photos_pendant = [p for p in veh_photos if p.get('type_photo', '') == "Pendant réparation"]
+                    if photos_pendant:
+                        cols_pendant = st.columns(min(len(photos_pendant), 3))
+                        for i, p in enumerate(photos_pendant):
+                            with cols_pendant[i % 3]:
+                                try: st.image(p.get('chemin_fichier', ''))
+                                except: st.error("Image introuvable")
+                    else:
+                        st.info("Aucune photo 'Pendant' pour ce véhicule.")
+                        
+                    # Photos Après
+                    st.subheader("🔴 Après Réparation")
+                    photos_apres = [p for p in veh_photos if p.get('type_photo', '') == "Après réparation"]
+                    if photos_apres:
+                        cols_apres = st.columns(min(len(photos_apres), 3))
+                        for i, p in enumerate(photos_apres):
+                            with cols_apres[i % 3]:
+                                try: st.image(p.get('chemin_fichier', ''))
+                                except: st.error("Image introuvable")
+                    else:
+                        st.info("Aucune photo 'Après' pour ce véhicule.")
+                        
+                    # Option Suppression
+                    st.markdown("---")
+                    st.subheader("🗑️ Supprimer une photo")
+                    photo_dict = []
+                    for p in veh_photos:
+                        display = f"{p.get('type_photo', '')} - {p.get('date_upload', '')} ({p.get('chemin_fichier', '')}) [PhotoID:{p.get('id', '')}]"
+                        photo_dict.append(display)
+                        
+                    if photo_dict:
+                        photo_choice = st.selectbox("Photo à supprimer", photo_dict)
+                        photo_id = int(photo_choice.split("[PhotoID:")[1].replace("]", ""))
+                        
+                        if st.button("Supprimer cette photo", type="secondary"):
+                            # Récupérer le chemin avant de supprimer l'enregistrement
+                            photo_to_del = get_record('photos', photo_id)
+                            if photo_to_del:
+                                filepath_to_del = photo_to_del.get('chemin_fichier', '')
+                                
+                                # Supprimer le fichier physique
+                                if filepath_to_del and os.path.exists(filepath_to_del):
+                                    os.remove(filepath_to_del)
+                                    
+                                # Supprimer de la DB via JSONDB
+                                delete_record('photos', photo_id)
+                                st.success("Photo supprimée avec succès !")
+                                st.rerun()
+                            else:
+                                st.error("Photo introuvable dans la base de données.")
+                    else:
+                        st.info("Aucune photo à supprimer pour ce véhicule.")
 def show_qrcode():
     st.title("📱 Génération de QR Code Client")
     
