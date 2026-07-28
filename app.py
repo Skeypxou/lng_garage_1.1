@@ -1547,6 +1547,158 @@ def show_qr_dashboard(veh_id):
         if suivi: st.progress(int(suivi['progression']) / 100, text=f"Étape : {suivi['etape_actuelle']} ({o['statut']})")
     else: st.success("✅ Réparation Terminée ou Non commencée")
 
+def show_caisse():
+    st.title("💰 Gestion de Caisse & Trésorerie")
+    
+    tab1, tab2, tab3 = st.tabs(["📊 Journal de Caisse", "➕ Nouvelle Transaction", "📈 Rapports & Solde"])
+    
+    # --- TAB 1 : JOURNAL ---
+    with tab1:
+        col_filter1, col_filter2 = st.columns(2)
+        with col_filter1:
+            filtre_type = st.selectbox("Type de transaction", ["Tous", "Entrée", "Sortie"], key="filter_caisse_type")
+        with col_filter2:
+            filtre_periode = st.selectbox("Période", ["Aujourd'hui", "7 jours", "30 jours", "Tout"], key="filter_caisse_periode")
+            
+        all_transactions = get_all_records('paiements')
+        filtered_transactions = []
+        today = date.today()
+        
+        for t in all_transactions:
+            # Filtre par type
+            if filtre_type != "Tous" and t.get('type_transaction', '') != filtre_type:
+                continue
+                
+            # Filtre par période
+            if filtre_periode != "Tout":
+                t_date_str = t.get('date_transaction', '')
+                if not t_date_str:
+                    continue
+                try:
+                    t_date = datetime.strptime(t_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    continue
+                    
+                if filtre_periode == "Aujourd'hui" and t_date != today:
+                    continue
+                elif filtre_periode == "7 jours" and (today - t_date).days > 7:
+                    continue
+                elif filtre_periode == "30 jours" and (today - t_date).days > 30:
+                    continue
+
+            filtered_transactions.append(t)
+        
+        if not filtered_transactions:
+            st.info("Aucune transaction trouvée pour cette période.")
+        else:
+            data_to_display = []
+            for t in filtered_transactions:
+                montant = float(t.get('montant', 0.0))
+                type_trans = t.get('type_transaction', '')
+                if type_trans == 'Entrée':
+                    montant_fmt = f"+{montant:.2f} €"
+                else:
+                    montant_fmt = f"-{montant:.2f} €"
+                    
+                data_to_display.append({
+                    "Date": t.get('date_transaction', ''),
+                    "Type": type_trans,
+                    "Catégorie": t.get('categorie', ''),
+                    "Description": t.get('description', ''),
+                    "Montant": montant_fmt
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : NOUVELLE TRANSACTION ---
+    with tab2:
+        with st.form("new_transaction"):
+            st.subheader("🧾 Enregistrer un mouvement d'argent")
+            
+            type_transaction = st.radio("Type de mouvement *", ["Entrée (Encaissement)", "Sortie (Décaissement)"])
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                date_transaction = st.date_input("Date de l'opération *")
+                if type_transaction == "Entrée (Encaissement)":
+                    categorie = st.selectbox("Catégorie *", ["Paiement Client", "Vente directe", "Autre revenu"])
+                else:
+                    categorie = st.selectbox("Catégorie *", ["Achat Fournisseur", "Salaire Employé", "Charges (Loyer/EDF)", "Autre dépense"])
+                    
+            with col2:
+                montant = st.number_input("Montant (€) *", min_value=0.0, format="%.2f")
+                description = st.text_area("Description / Référence * (ex: FAC-0001, Salaire Janvier)")
+                
+            submitted = st.form_submit_button("✅ Enregistrer la transaction")
+            if submitted:
+                db_type = "Entrée" if "Entrée" in type_transaction else "Sortie"
+                
+                if montant > 0 and description and date_transaction:
+                    create_record('paiements', {
+                        "type_transaction": db_type,
+                        "montant": float(montant),
+                        "date_transaction": str(date_transaction),
+                        "description": description,
+                        "categorie": categorie
+                    })
+                    st.success(f"✅ Transaction de {montant:.2f} € ({db_type}) enregistrée dans la caisse !")
+                else:
+                    st.error("❌ Le montant, la date et la description sont obligatoires.")
+
+    # --- TAB 3 : RAPPORTS & SOLDE ---
+    with tab3:
+        st.subheader("📊 Santé Financière du Garage")
+        
+        all_transactions = get_all_records('paiements')
+        
+        if not all_transactions:
+            st.info("Aucune donnée financière à analyser pour le moment.")
+        else:
+            df_all = pd.DataFrame(all_transactions)
+            # Sécurisation des types numériques
+            df_all['montant'] = pd.to_numeric(df_all.get('montant', 0), errors='coerce').fillna(0)
+            
+            # Calculs des KPI
+            total_entrees = df_all[df_all['type_transaction'] == 'Entrée']['montant'].sum()
+            total_sorties = df_all[df_all['type_transaction'] == 'Sortie']['montant'].sum()
+            solde_actuel = total_entrees - total_sorties
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(label="📈 Total Entrées", value=f"{total_entrees:.2f} €")
+            with col2:
+                st.metric(label="📉 Total Sorties", value=f"{total_sorties:.2f} €")
+            with col3:
+                delta_color = "normal" if solde_actuel >= 0 else "inverse"
+                st.metric(label="💎 SOLDE NET", value=f"{solde_actuel:.2f} €", delta=f"{solde_actuel:.2f} €", delta_color=delta_color)
+                
+            st.markdown("---")
+            
+            # Préparation des graphiques Plotly
+            # Sécurisation du parsing des dates
+            df_all = df_all.dropna(subset=['date_transaction'])
+            df_all['Mois'] = pd.to_datetime(df_all['date_transaction'], errors='coerce').dt.to_period('M').astype(str)
+            df_all = df_all.dropna(subset=['Mois'])
+            
+            if not df_all.empty:
+                df_grouped = df_all.groupby(['Mois', 'type_transaction'])['montant'].sum().reset_index()
+                
+                fig_cashflow = px.bar(df_grouped, x='Mois', y='montant', color='type_transaction',
+                                     title="Flux de Trésorerie Mensuel (Entrées vs Sorties)",
+                                     barmode='group',
+                                     color_discrete_map={'Entrée': '#2ecc71', 'Sortie': '#e74c3c'})
+                st.plotly_chart(fig_cashflow, use_container_width=True)
+                
+                # Graphique Camembert : Répartition des Sorties
+                df_sorties = df_all[df_all['type_transaction'] == 'Sortie']
+                if not df_sorties.empty:
+                    df_cat_sorties = df_sorties.groupby('categorie')['montant'].sum().reset_index()
+                    
+                    fig_expenses = px.pie(df_cat_sorties, values='montant', names='categorie', 
+                                         title="Répartition des Dépenses par Catégorie",
+                                         hole=0.4)
+                    st.plotly_chart(fig_expenses, use_container_width=True)
 def show_qrcode():
     st.title("📱 Génération de QR Code Client")
     
