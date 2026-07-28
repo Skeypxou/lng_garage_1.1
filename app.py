@@ -3048,19 +3048,65 @@ def show_users():
                 st.success("Utilisateur supprimé !"); st.rerun()
 
 # ==========================================
-# 5. EXÉCUTION PRINCIPALE
+# EXÉCUTION PRINCIPALE
 # ==========================================
+
+# Vérifier si on accède via un QR Code (Paramètre URL)
 query_params = st.query_params
+
 if "veh_id" in query_params:
-    show_qr_dashboard(int(query_params["veh_id"]))
+    # MODE MOBILE : Affichage direct pour le client qui a scanné le QR Code
+    try:
+        veh_id = int(query_params["veh_id"])
+        show_qr_dashboard(veh_id)
+    except ValueError:
+        st.error("❌ Erreur : L'ID du véhicule dans l'URL n'est pas un nombre valide.")
+    except Exception as e:
+        st.error(f"❌ Une erreur est survenue lors du chargement du suivi : {e}")
 else:
-    if module_name == "dashboard": show_dashboard()
-    elif module_name == "clients": show_clients()
-    elif module_name == "vehicules": show_vehicules()
-    elif module_name == "reception": show_reception()
-    elif module_name == "sinistres": show_sinistres()
-    elif module_name == "devis": show_devis()
-    elif module_name == "ordres": show_ordres()
-    elif module_name == "atelier": show_atelier()
-    elif module_name == "qrcode": show_qrcode()
-    elif module_name == "users": show_users()
+    # MODE ERP NORMAL : Menu latéral pour le garage
+    
+    # Appeler la fonction du module choisi
+    try:
+        if module_name == "dashboard":
+            show_dashboard()
+        elif module_name == "clients":
+            show_clients()
+        elif module_name == "vehicules":
+            show_vehicules()
+        elif module_name == "reception":
+            show_reception()
+        elif module_name == "sinistres":
+            show_sinistres()
+        elif module_name == "devis":
+            show_devis()
+        elif module_name == "ordres":
+            show_ordres()
+        elif module_name == "atelier":
+            show_atelier()
+        elif module_name == "stock":
+            show_stock()
+        elif module_name == "accessoires":
+            show_accessoires()
+        elif module_name == "fournisseurs":
+            show_fournisseurs()
+        elif module_name == "achats":
+            show_achats()
+        elif module_name == "facturation":
+            show_facturation()
+        elif module_name == "caisse":
+            show_caisse()
+        elif module_name == "photos":
+            show_photos()
+        elif module_name == "employes":
+            show_employes()
+        elif module_name == "documents":
+            show_documents()
+        elif module_name == "statistiques":
+            show_statistiques()
+        elif module_name == "qrcode":
+            show_qrcode()
+        elif module_name == "users":
+            show_users()
+    except Exception as e:
+        st.error(f"❌ Une erreur inattendue est survenue lors du chargement du module : {e}")
