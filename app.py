@@ -1193,6 +1193,192 @@ def show_atelier():
                         st.success(f"✅ Progression mise à jour : Étape **{new_etape}** ({new_progress}%)")
                     
                     st.rerun() # Rafraîchir la page pour voir les couleurs changer immédiatement                
+def show_stock():
+    st.title("📦 Gestion du Stock")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Inventaire", "➕ Entrée Stock", "➖ Sortie Stock", "⚠️ Alertes & Statistiques"])
+    
+    # --- TAB 1 : INVENTAIRE ---
+    with tab1:
+        filtre_type = st.selectbox("Filtrer par catégorie", ["Tous", "Consommable", "Pièce"], key="filtre_stock")
+        
+        stock_items = get_all_records('stock')
+        
+        if filtre_type != "Tous":
+            stock_items = [s for s in stock_items if s.get('type_article', '') == filtre_type]
+            
+        if not stock_items:
+            st.info("Aucun article en stock pour le moment.")
+        else:
+            data_to_display = []
+            for s in stock_items:
+                quantite = s.get('quantite', 0)
+                seuil = s.get('seuil_alerte', 0)
+                
+                if quantite == 0:
+                    statut = "⚫ Rupture"
+                elif quantite <= seuil:
+                    statut = "🔴 Stock Faible"
+                else:
+                    statut = "🟢 OK"
+                    
+                data_to_display.append({
+                    "Statut": statut,
+                    "Type": s.get('type_article', ''),
+                    "Référence": s.get('reference', ''),
+                    "Désignation": s.get('designation', ''),
+                    "Qté": quantite,
+                    "Prix Achat": s.get('prix_achat', 0),
+                    "Prix Vente": s.get('prix_vente', 0)
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : ENTRÉE STOCK ---
+    with tab2:
+        action = st.radio("Choisir l'action", ["Ajouter un nouvel article", "Réapprovisionner un article existant"])
+        
+        if action == "Ajouter un nouvel article":
+            with st.form("add_article"):
+                st.subheader("🆕 Nouvel Article")
+                col1, col2 = st.columns(2)
+                with col1:
+                    type_article = st.selectbox("Type d'article *", ["Consommable", "Pièce"])
+                    reference = st.text_input("Référence (ex: PCH-AV01)")
+                    designation = st.text_input("Désignation / Nom * (ex: Pare-chocs avant)")
+                with col2:
+                    quantite = st.number_input("Quantité initiale *", min_value=0, step=1)
+                    prix_achat = st.number_input("Prix d'achat unitaire (dzd)", min_value=0.0, format="%.2f")
+                    prix_vente = st.number_input("Prix de vente unitaire (dzd)", min_value=0.0, format="%.2f")
+                    seuil_alerte = st.number_input("Seuil d'alerte (quantité min) *", min_value=0, step=1, value=5)
+                
+                submitted = st.form_submit_button("Ajouter au catalogue")
+                if submitted:
+                    if designation and quantite >= 0:
+                        create_record('stock', {
+                            "type_article": type_article,
+                            "reference": reference,
+                            "designation": designation,
+                            "quantite": int(quantite),
+                            "prix_achat": float(prix_achat),
+                            "prix_vente": float(prix_vente),
+                            "seuil_alerte": int(seuil_alerte)
+                        })
+                        st.success(f"✅ Article '{designation}' ajouté avec {quantite} unités !")
+                    else:
+                        st.error("❌ La désignation et la quantité sont obligatoires.")
+
+        elif action == "Réapprovisionner un article existant":
+            stock_items = get_all_records('stock')
+            if not stock_items:
+                st.warning("Le catalogue est vide. Ajoutez d'abord un nouvel article.")
+            else:
+                art_dict = []
+                for s in stock_items:
+                    display = f"{s.get('designation', '')} (Stock actuel: {s.get('quantite', 0)}) [ID:{s.get('id', '')}]"
+                    art_dict.append(display)
+                    
+                art_choice = st.selectbox("Article à réapprovisionner", art_dict)
+                art_id = int(art_choice.split("[ID:")[1].replace("]", ""))
+                
+                qty_add = st.number_input("Quantité ajoutée", min_value=1, step=1)
+                new_buy_price = st.number_input("Nouveau prix d'achat (si changé)", min_value=0.0, format="%.2f")
+                
+                if st.button("📥 Réapprovisionner"):
+                    item = get_record('stock', art_id)
+                    if item is None:
+                        st.error("Article introuvable.")
+                        return
+                        
+                    # Mise à jour de la quantité et du prix d'achat
+                    update_record('stock', art_id, {
+                        "quantite": item.get('quantite', 0) + int(qty_add),
+                        "prix_achat": float(new_buy_price)
+                    })
+                    st.success(f"✅ Stock mis à jour ! {qty_add} unités ajoutées.")
+
+    # --- TAB 3 : SORTIE STOCK ---
+    with tab3:
+        stock_items = get_all_records('stock')
+        available_items = [s for s in stock_items if s.get('quantite', 0) > 0]
+        
+        if not available_items:
+            st.warning("Aucun article disponible en stock pour une sortie.")
+        else:
+            art_dict = []
+            for s in available_items:
+                display = f"{s.get('designation', '')} (Dispo: {s.get('quantite', 0)}) [ID:{s.get('id', '')}]"
+                art_dict.append(display)
+                
+            art_choice = st.selectbox("Article à consommer / sortir", art_dict)
+            art_id = int(art_choice.split("[ID:")[1].replace("]", ""))
+            
+            qty_remove = st.number_input("Quantité sortie", min_value=1, step=1)
+            
+            if st.button("📤 Sortir du stock"):
+                item = get_record('stock', art_id)
+                if item is None:
+                    st.error("Article introuvable.")
+                    return
+                    
+                current_qty = item.get('quantite', 0)
+                if qty_remove > current_qty:
+                    st.error(f"❌ Impossible ! Vous essayez de sortir {qty_remove} unités, mais il n'y en a que {current_qty} en stock.")
+                else:
+                    new_qty = current_qty - int(qty_remove)
+                    update_record('stock', art_id, {"quantite": new_qty})
+                    st.success(f"✅ {qty_remove} unité(s) sorties du stock !")
+                    if new_qty <= 5: # Valeur d'alerte générique
+                        st.warning("⚠️ Attention, le stock de cet article est maintenant bas !")
+
+    # --- TAB 4 : ALERTES & STATS ---
+    with tab4:
+        st.subheader("⚠️ Articles en Stock Faible ou en Rupture")
+        stock_items = get_all_records('stock')
+        alertes = [s for s in stock_items if s.get('quantite', 0) <= s.get('seuil_alerte', 0)]
+        
+        if alertes:
+            data_alertes = []
+            for s in alertes:
+                data_alertes.append({
+                    "Désignation": s.get('designation', ''),
+                    "Qté": s.get('quantite', 0),
+                    "Seuil Alerte": s.get('seuil_alerte', 0)
+                })
+            df_alertes = pd.DataFrame(data_alertes)
+            st.dataframe(df_alertes, use_container_width=True, hide_index=True)
+        else:
+            st.info("🎉 Aucune alerte de stock faible ! Tout est bien approvisionné.")
+            
+        st.markdown("---")
+        st.subheader("📊 Valeur du Stock par Catégorie")
+        
+        if stock_items:
+            # Création d'un DataFrame pour l'analyse
+            df_stats = pd.DataFrame(stock_items)
+            # Sécurisation des types numériques
+            df_stats['quantite'] = pd.to_numeric(df_stats.get('quantite', 0), errors='coerce').fillna(0)
+            df_stats['prix_achat'] = pd.to_numeric(df_stats.get('prix_achat', 0), errors='coerce').fillna(0)
+            df_stats['valeur_achat'] = df_stats['quantite'] * df_stats['prix_achat']
+            
+            # Groupement par type_article
+            df_grouped = df_stats.groupby('type_article').agg(
+                Valeur_Total_Achat=('valeur_achat', 'sum'),
+                Total_Unites=('quantite', 'sum')
+            ).reset_index()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                fig_px = px.pie(df_grouped, values='Valeur_Total_Achat', names='type_article', 
+                               title="Répartition de la Valeur d'Achat du Stock (dzd)", hole=0.4)
+                st.plotly_chart(fig_px, use_container_width=True)
+            with col2:
+                fig_bar = px.bar(df_grouped, x='type_article', y='Total_Unites', 
+                                 title="Nombre d'Unités par Catégorie", color='type_article')
+                st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("Aucune donnée statistique disponible pour le moment.")
 def show_qr_dashboard(veh_id):
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🚗 LNS GARAGE PRO - Suivi Véhicule</h1>", unsafe_allow_html=True)
     veh_info = get_record('vehicules', veh_id)
