@@ -297,37 +297,86 @@ def show_clients():
 
 def show_vehicules():
     st.title("🚘 Gestion des Véhicules")
-    tab1, tab2 = st.tabs(["📋 Liste", "➕ Ajouter"])
     
+    tab1, tab2 = st.tabs(["📋 Liste des Véhicules", "➕ Ajouter un Véhicule"])
+    
+    # --- TAB 1 : LISTE ---
     with tab1:
-        df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_v.empty and not df_c.empty:
-            df = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-            df['Propriétaire'] = df['nom_c'] + ' ' + df['prenom_c']
-            st.dataframe(df[['immatriculation', 'marque', 'modele', 'annee', 'couleur', 'Propriétaire']], use_container_width=True, hide_index=True)
-        else: st.info("Aucun véhicule enregistré.")
-
-    with tab2:
-        df_clients = get_df('clients')
-        if df_clients.empty: st.error("Vous devez ajouter un client avant d'ajouter un véhicule !")
+        vehicules = get_all_records('vehicules')
+        
+        if not vehicules:
+            st.info("Aucun véhicule enregistré.")
         else:
-            client_dict = df_clients.apply(lambda row: f"{row['nom']} {row['prenom']} (ID: {row['id']})", axis=1).tolist()
+            data_to_display = []
+            for v in vehicules:
+                # Récupération du client via JSONDB (remplace le JOIN SQL)
+                client = get_record('clients', v.get('client_id'))
+                
+                # Sécurité : vérifier si le client existe
+                if client is None:
+                    proprietaire = "Client inconnu"
+                else:
+                    proprietaire = f"{client.get('nom', '')} {client.get('prenom', '')}"
+                    
+                data_to_display.append({
+                    "Immatriculation": v.get('immatriculation', ''),
+                    "Marque": v.get('marque', ''),
+                    "Modèle": v.get('modele', ''),
+                    "Année": v.get('annee', ''),
+                    "Couleur": v.get('couleur', ''),
+                    "Propriétaire": proprietaire
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # --- TAB 2 : AJOUTER ---
+    with tab2:
+        clients = get_all_records('clients')
+        
+        if not clients:
+            st.error("Vous devez ajouter un client avant d'ajouter un véhicule !")
+        else:
+            # Construction du menu déroulant sans Pandas
+            client_dict = []
+            for c in clients:
+                display = f"{c.get('nom', '')} {c.get('prenom', '')} (ID: {c.get('id', '')})"
+                client_dict.append(display)
+                
             client_choice = st.selectbox("Propriétaire du véhicule", client_dict)
             client_id = int(client_choice.split("ID: ")[1].replace(")", ""))
             
             with st.form("ajout_vehicule"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    immat = st.text_input("Immatriculation *"); vin = st.text_input("VIN"); marque = st.text_input("Marque *"); modele = st.text_input("Modèle *")
+                    immat = st.text_input("Immatriculation *")
+                    vin = st.text_input("VIN (Numéro de châssis)")
+                    marque = st.text_input("Marque *")
+                    modele = st.text_input("Modèle *")
                 with col2:
-                    annee = st.number_input("Année", min_value=1900, max_value=2025, value=2020); couleur = st.text_input("Couleur")
-                    kilometrage = st.number_input("Kilométrage", min_value=0); carburant = st.selectbox("Carburant", ["Diesel", "Essence", "Hybride", "Electrique", "GPL"])
-                if st.form_submit_button("Enregistrer le véhicule"):
+                    annee = st.number_input("Année", min_value=1900, max_value=2025, value=2020)
+                    couleur = st.text_input("Couleur")
+                    kilometrage = st.number_input("Kilométrage", min_value=0)
+                    carburant = st.selectbox("Carburant", ["Diesel", "Essence", "Hybride", "Electrique", "GPL"])
+                
+                submitted = st.form_submit_button("Enregistrer le véhicule")
+                if submitted:
                     if immat and marque and modele:
-                        create_record('vehicules', {"client_id": client_id, "immatriculation": immat, "vin": vin, "marque": marque, "modele": modele, "annee": int(annee), "couleur": couleur, "kilometrage": int(kilometrage), "carburant": carburant})
+                        # Sauvegarde via JSONDB
+                        create_record('vehicules', {
+                            "client_id": client_id,
+                            "immatriculation": immat,
+                            "vin": vin,
+                            "marque": marque,
+                            "modele": modele,
+                            "annee": int(annee),
+                            "couleur": couleur,
+                            "kilometrage": int(kilometrage),
+                            "carburant": carburant
+                        })
                         st.success(f"Véhicule {immat} ajouté avec succès !")
-                    else: st.error("Immatriculation, Marque et Modèle sont obligatoires.")
-
+                    else:
+                        st.error("Immatriculation, Marque et Modèle sont obligatoires.")
 def show_reception():
     st.title("📥 Réception Véhicule")
     tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Nouvelle Réception", "🔍 Détails / Modifier"])
