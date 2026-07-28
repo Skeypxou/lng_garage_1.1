@@ -561,100 +561,253 @@ def show_reception():
                     st.rerun()
 def show_sinistres():
     st.title("🛡️ Sinistres & Assurances")
-    tab1, tab2, tab3 = st.tabs(["📋 Liste", "➕ Nouveau Sinistre", "🔍 Détails / Modifier"])
     
+    tab1, tab2, tab3 = st.tabs(["📋 Liste des Sinistres", "➕ Nouveau Sinistre", "🔍 Détails / Modifier"])
+    
+    # --- TAB 1 : LISTE ---
     with tab1:
-        df_s = get_df('assurances'); df_v = get_df('vehicules'); df_c = get_df('clients')
-        if not df_s.empty and not df_v.empty and not df_c.empty:
-            df = pd.merge(df_s, df_v, left_on='vehicule_id', right_on='id', suffixes=('_s', '_v'))
-            df = pd.merge(df, df_c, left_on='client_id_v', right_on='id', suffixes=('', '_c'))
-            df['Client'] = df['nom_c'] + ' ' + df['prenom_c']
-            st.dataframe(df[['numero_dossier', 'compagnie', 'immatriculation', 'Client', 'date_expertise', 'montant_valide']], use_container_width=True, hide_index=True)
-        else: st.info("Aucun sinistre d'assurance enregistré.")
-
-    with tab2:
-        df_v = get_df('vehicules'); df_c = get_df('clients')
-        if df_v.empty or df_c.empty: st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un sinistre !")
+        sinistres = get_all_records('assurances')
+        
+        if not sinistres:
+            st.info("Aucun sinistre d'assurance enregistré.")
         else:
-            df_veh = pd.merge(df_v, df_c, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-            df_veh['Client'] = df_veh['nom_c'] + ' ' + df_veh['prenom_c']
-            df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['Client']} [VehID:{r['id_v']}]", axis=1)
-            
-            with st.form("new_sinistre"):
-                veh_choice = st.selectbox("Véhicule concerné *", df_veh['display'].tolist())
-                veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
-                col1, col2 = st.columns(2)
-                with col1: compagnie = st.text_input("Compagnie d'assurance *"); numero_dossier = st.text_input("N° Dossier *"); expert = st.text_input("Nom de l'Expert")
-                with col2: date_expertise = st.date_input("Date de l'expertise *"); montant_valide = st.number_input("Montant validé (€)", min_value=0.0, format="%.2f")
-                commentaires = st.text_area("Commentaires")
-                if st.form_submit_button("🛡️ Créer le Sinistre"):
-                    if compagnie and numero_dossier and date_expertise:
-                        create_record('assurances', {"vehicule_id": veh_id, "compagnie": compagnie, "numero_dossier": numero_dossier, "expert": expert, "date_expertise": str(date_expertise), "montant_valide": float(montant_valide), "commentaires": commentaires})
-                        st.success(f"✅ Dossier sinistre {numero_dossier} créé avec succès !")
-                    else: st.error("❌ La Compagnie, le N° Dossier et la Date sont obligatoires.")
+            data_to_display = []
+            for s in sinistres:
+                vehicule = get_record('vehicules', s.get('vehicule_id'))
+                client = get_record('clients', vehicule.get('client_id')) if vehicule else None
+                
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                client_name = f"{client.get('nom', '')} {client.get('prenom', '')}" if client else 'Inconnu'
+                
+                data_to_display.append({
+                    "N° Dossier": s.get('numero_dossier', ''),
+                    "Compagnie": s.get('compagnie', ''),
+                    "Immatriculation": immat,
+                    "Client": client_name,
+                    "Date Expertise": s.get('date_expertise', ''),
+                    "Montant Validé": s.get('montant_valide', 0)
+                })
+                
+            df_display = pd.DataFrame(data_to_display)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
 
+    # --- TAB 2 : AJOUTER ---
+    with tab2:
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.error("⚠️ Vous devez ajouter un client et un véhicule avant de créer un sinistre !")
+        else:
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{client.get('nom', '')} "
+                        f"{client.get('prenom', '')} [VehID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
+                    
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                with st.form("new_sinistre"):
+                    st.subheader("🆕 Ouverture de Dossier Sinistre")
+                    veh_choice = st.selectbox("Véhicule concerné *", veh_dict)
+                    veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        compagnie = st.text_input("Compagnie d'assurance * (ex: MAIF, AXA)")
+                        numero_dossier = st.text_input("N° Dossier Assurance *")
+                        expert = st.text_input("Nom de l'Expert mandateur")
+                    with col2:
+                        date_expertise = st.date_input("Date de l'expertise prévue *")
+                        montant_valide = st.number_input("Montant validé par l'expert (€)", min_value=0.0, format="%.2f")
+                        
+                    commentaires = st.text_area("Commentaires / Observations de l'expert")
+                    
+                    submitted = st.form_submit_button("🛡️ Créer le Sinistre")
+                    if submitted:
+                        if compagnie and numero_dossier and date_expertise:
+                            create_record('assurances', {
+                                "vehicule_id": veh_id,
+                                "compagnie": compagnie,
+                                "numero_dossier": numero_dossier,
+                                "expert": expert,
+                                "date_expertise": str(date_expertise),
+                                "montant_valide": float(montant_valide),
+                                "commentaires": commentaires
+                            })
+                            st.success(f"✅ Dossier sinistre {numero_dossier} créé avec succès !")
+                        else:
+                            st.error("❌ La Compagnie, le N° Dossier et la Date sont obligatoires.")
+
+    # --- TAB 3 : MODIFIER / SUPPRIMER ---
     with tab3:
-        df_s = get_df('assurances'); df_v = get_df('vehicules')
-        if not df_s.empty and not df_v.empty:
-            df = pd.merge(df_s, df_v, left_on='vehicule_id', right_on='id', suffixes=('_s', '_v'))
-            df['display'] = df.apply(lambda r: f"{r['numero_dossier']} - {r['compagnie']} ({r['immatriculation']}) [SinID:{r['id_s']}]", axis=1)
-            sin_choice = st.selectbox("Choisir un sinistre", df['display'].tolist())
+        sinistres = get_all_records('assurances')
+        
+        if not sinistres:
+            st.info("Aucun sinistre à modifier.")
+        else:
+            sin_dict = []
+            for s in sinistres:
+                vehicule = get_record('vehicules', s.get('vehicule_id'))
+                immat = vehicule.get('immatriculation', '') if vehicule else 'N/A'
+                
+                display = f"{s.get('numero_dossier', '')} - {s.get('compagnie', '')} ({immat}) [SinID:{s.get('id', '')}]"
+                sin_dict.append(display)
+                
+            sin_choice = st.selectbox("Choisir un sinistre", sin_dict)
             sin_id = int(sin_choice.split("[SinID:")[1].replace("]", ""))
+            
             detail = get_record('assurances', sin_id)
+            
+            if detail is None:
+                st.error("Sinistre introuvable dans la base de données.")
+                return
             
             with st.form("modif_sinistre"):
                 col1, col2 = st.columns(2)
-                with col1: m_compagnie = st.text_input("Compagnie *", value=detail['compagnie']); m_dossier = st.text_input("N° Dossier *", value=detail['numero_dossier']); m_expert = st.text_input("Expert", value=detail.get('expert', ''))
-                with col2: m_date = st.date_input("Date expertise", value=pd.to_datetime(detail['date_expertise'])); m_montant = st.number_input("Montant validé (€)", min_value=0.0, format="%.2f", value=float(detail.get('montant_valide', 0.0)))
+                with col1:
+                    m_compagnie = st.text_input("Compagnie *", value=detail.get('compagnie', ''))
+                    m_dossier = st.text_input("N° Dossier *", value=detail.get('numero_dossier', ''))
+                    m_expert = st.text_input("Expert", value=detail.get('expert', ''))
+                with col2:
+                    # Sécurité sur la date
+                    current_date = detail.get('date_expertise', str(date.today()))
+                    m_date = st.date_input("Date expertise", value=pd.to_datetime(current_date))
+                    m_montant = st.number_input("Montant validé (€)", min_value=0.0, format="%.2f", value=float(detail.get('montant_valide', 0.0)))
+                
                 m_comments = st.text_area("Commentaires", value=detail.get('commentaires', ''))
-                if st.form_submit_button("💾 Sauvegarder"):
-                    update_record('assurances', sin_id, {"compagnie": m_compagnie, "numero_dossier": m_dossier, "expert": m_expert, "date_expertise": str(m_date), "montant_valide": float(m_montant), "commentaires": m_comments})
-                    st.success("✅ Sinistre mis à jour !"); st.rerun()
-            if st.button(f"🗑️ Supprimer le sinistre {detail['numero_dossier']}", type="secondary"):
+                
+                save = st.form_submit_button("💾 Sauvegarder")
+                if save:
+                    update_record('assurances', sin_id, {
+                        "compagnie": m_compagnie,
+                        "numero_dossier": m_dossier,
+                        "expert": m_expert,
+                        "date_expertise": str(m_date),
+                        "montant_valide": float(m_montant),
+                        "commentaires": m_comments
+                    })
+                    st.success("✅ Sinistre mis à jour !")
+                    st.rerun()
+            
+            st.markdown("---")
+            if st.button(f"🗑️ Supprimer le sinistre {detail.get('numero_dossier', '')}", type="secondary"):
                 delete_record('assurances', sin_id)
-                st.success("Sinistre supprimé !"); st.rerun()
-        else: st.info("Aucun sinistre à modifier.")
+                st.success("Sinistre supprimé !")
+                st.rerun()
 
+
+# --- FONCTION GÉNÉRATION PDF ---
 def generate_devis_pdf(devis_info, client_info, vehicule_info, details):
-    if not os.path.exists("pdf"): os.makedirs("pdf")
-    pdf_path = f"pdf/Devis_{devis_info['numero_devis']}.pdf"
+    # S'assurer que le dossier pdf existe
+    if not os.path.exists("pdf"):
+        os.makedirs("pdf")
+        
+    # Sécurisation des dictionnaires pour éviter les KeyError dans ReportLab
+    devis_info = devis_info if devis_info else {}
+    client_info = client_info if client_info else {}
+    vehicule_info = vehicule_info if vehicule_info else {}
+    details = details if details else {}
+        
+    pdf_path = f"pdf/Devis_{devis_info.get('numero_devis', 'inconnu')}.pdf"
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
+    
     styles = getSampleStyleSheet()
     elements = []
+    
+    # En-tête
     elements.append(Paragraph("LNS GARAGE PRO - DEVIS", styles['Title']))
     elements.append(Spacer(1, 15))
+    
+    # Informations générales (Utilisation de .get() partout)
     info_data = [
-        [f"Client: {client_info['nom']} {client_info['prenom']}", f"Date: {devis_info['date_creation']}"],
-        [f"Véhicule: {vehicule_info['marque']} {vehicule_info['modele']}", f"Immat: {vehicule_info['immatriculation']}"]
+        [f"Client: {client_info.get('nom', '')} {client_info.get('prenom', '')}", f"Date: {devis_info.get('date_creation', '')}"],
+        [f"Adresse: {client_info.get('adresse', 'N/A')}", f"N° Devis: {devis_info.get('numero_devis', '')}"],
+        [f"Véhicule: {vehicule_info.get('marque', '')} {vehicule_info.get('modele', '')}", f"Immat: {vehicule_info.get('immatriculation', '')}"],
+        [f"Carburant: {vehicule_info.get('carburant', 'N/A')}", f"Statut: {devis_info.get('statut', '')}"]
     ]
     info_table = Table(info_data, colWidths=[120*mm, 60*mm])
-    info_table.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+    info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
+    ]))
     elements.append(info_table)
     elements.append(Spacer(1, 20))
     
+    # Tableau des travaux et pièces
     table_data = [["Type", "Description", "Quantité", "Prix Unitaire", "Total"]]
+    
+    # Ajout Main d'œuvre
     for item in details.get('mo', []):
-        if item['qty'] > 0: table_data.append(["MO", item['desc'], f"{item['qty']} H", f"{item['price']:.2f} dzd", f"{item['total']:.2f} dzd"])
+        if item.get('qty', 0) > 0:
+            table_data.append([
+                "MO", 
+                item.get('desc', ''), 
+                f"{item.get('qty', 0)} H", 
+                f"{item.get('price', 0):.2f} dzd", 
+                f"{item.get('total', 0):.2f} dzd"
+            ])
+            
+    # Ajout Pièces
     for item in details.get('pieces', []):
-        if item['qty'] > 0: table_data.append(["Pièce", f"{item.get('ref', '')} - {item['desc']}", f"{item['qty']}", f"{item['price']:.2f} dzd", f"{item['total']:.2f} dzd"])
-        
+        if item.get('qty', 0) > 0:
+            table_data.append([
+                "Pièce", 
+                f"{item.get('ref', '')} - {item.get('desc', '')}", 
+                f"{item.get('qty', 0)}", 
+                f"{item.get('price', 0):.2f} dzd", 
+                f"{item.get('total', 0):.2f} dzd"
+            ])
+            
     items_table = Table(table_data, colWidths=[20*mm, 70*mm, 25*mm, 30*mm, 30*mm])
-    items_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.darkblue), ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), ('GRID', (0,0), (-1,-1), 0.5, colors.black)]))
+    items_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
+    ]))
     elements.append(items_table)
     elements.append(Spacer(1, 20))
     
-    ht = devis_info['total_mo'] + devis_info['total_pieces']
+    # Totaux
+    total_mo = devis_info.get('total_mo', 0)
+    total_pieces = devis_info.get('total_pieces', 0)
+    ht = total_mo + total_pieces
+    tva = devis_info.get('tva', 0)
+    total_ttc = devis_info.get('total_ttc', 0)
+    
     totals_data = [
+        ["Total Main d'œuvre", f"{total_mo:.2f} dzd"],
+        ["Total Pièces", f"{total_pieces:.2f} dzd"],
         ["Total Hors Taxe (HT)", f"{ht:.2f} dzd"],
-        ["TVA (20%)", f"{devis_info['tva']:.2f} dzd"],
-        ["Total TTC (À payer)", f"{devis_info['total_ttc']:.2f} dzd"]
+        ["TVA (20%)", f"{tva:.2f} dzd"],
+        ["Total TTC (À payer)", f"{total_ttc:.2f} dzd"]
     ]
     totals_table = Table(totals_data, colWidths=[120*mm, 50*mm])
-    totals_table.setStyle(TableStyle([('BACKGROUND', (0, -1), (-1, -1), colors.lightgreen), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+    totals_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgreen),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold')
+    ]))
     elements.append(totals_table)
+    
+    # Pied de page
+    elements.append(Spacer(1, 40))
+    elements.append(Paragraph("Signature du Garage:", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Signature du Client (Bon pour accord):", styles['Normal']))
+    
     doc.build(elements)
     return pdf_path
-
 def show_devis():
     st.title("📝 Gestion des Devis")
     
