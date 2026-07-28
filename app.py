@@ -1549,22 +1549,98 @@ def show_qr_dashboard(veh_id):
 
 def show_qrcode():
     st.title("📱 Génération de QR Code Client")
-    st.info("Génère un QR Code unique pour chaque véhicule.")
-    app_base_url = st.text_input("URL de base de l'application", "http://localhost:8501")
-    df_vehicules = get_df('vehicules'); df_clients = get_df('clients')
-    if not df_vehicules.empty and not df_clients.empty:
-        df_veh = pd.merge(df_vehicules, df_clients, left_on='client_id', right_on='id', suffixes=('_v', '_c'))
-        df_veh['display'] = df_veh.apply(lambda r: f"{r['immatriculation']} - {r['marque']} ({r['nom_c']}) [VehID:{r['id_v']}]", axis=1)
-        veh_choice = st.selectbox("Choisir le véhicule", df_veh['display'].tolist())
-        veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
-        qr_url = f"{app_base_url}?veh_id={veh_id}"
-        st.code(qr_url)
-        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
-        qr.add_data(qr_url); qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
-        buf = io.BytesIO(); img.save(buf, format="PNG"); byte_im = buf.getvalue()
-        st.image(byte_im, caption="QR Code généré")
-        st.download_button(label="⬇️ Télécharger QR Code", data=byte_im, file_name=f"QRCode_Veh_{veh_id}.png", mime="image/png")
+    
+    st.info("💡 Génère un QR Code unique pour chaque véhicule. Le client pourra scanner ce QR code avec son téléphone pour voir en temps réel l'avancement de ses travaux, les photos avant/après, et ses documents !")
+    
+    tab1, tab2 = st.tabs(["🔗 Créer un QR Code", "ℹ️ Comment ça marche ?"])
+    
+    with tab1:
+        # URL de l'application (à adapter selon où l'app est hébergée)
+        default_url = "http://localhost:8501" 
+        app_base_url = st.text_input("URL de base de votre application *", value=default_url, help="Si déployé sur Streamlit Cloud, mettez l'URL publique (ex: https://lnsgarage.streamlit.app)")
+        
+        vehicules = get_all_records('vehicules')
+        clients = get_all_records('clients')
+        
+        if not vehicules or not clients:
+            st.error("Ajoutez d'abord un client et un véhicule !")
+        else:
+            veh_dict = []
+            for v in vehicules:
+                client = get_record('clients', v.get('client_id'))
+                if client:
+                    display = (
+                        f"{v.get('immatriculation', '')} - "
+                        f"{v.get('marque', '')} "
+                        f"{v.get('modele', '')} "
+                        f"({client.get('nom', '')} {client.get('prenom', '')}) [VehID:{v.get('id', '')}]"
+                    )
+                    veh_dict.append(display)
+                    
+            if not veh_dict:
+                st.warning("Aucun véhicule valide associé à un client.")
+            else:
+                veh_choice = st.selectbox("Choisir le véhicule pour le QR Code", veh_dict)
+                veh_id = int(veh_choice.split("[VehID:")[1].replace("]", ""))
+                
+                # Récupération du véhicule via JSONDB pour l'affichage sécurisé
+                selected_veh = get_record('vehicules', veh_id)
+                if selected_veh is None:
+                    st.error("Véhicule introuvable dans la base de données.")
+                    return
+                
+                # Construire l'URL finale avec le paramètre
+                qr_url = f"{app_base_url}?veh_id={veh_id}"
+                
+                st.markdown("---")
+                st.subheader("🔗 URL de Suivi Générée")
+                st.code(qr_url, language="plaintext")
+                
+                # Générer l'image QR Code
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_L,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(qr_url)
+                qr.make(fit=True)
+                
+                img = qr.make_image(fill_color="black", back_color="white")
+                
+                # Convertir PIL Image en bytes pour Streamlit
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                byte_im = buf.getvalue()
+                
+                # Afficher le QR Code
+                st.image(byte_im, caption=f"QR Code pour {selected_veh.get('immatriculation', '')}")
+                
+                # Bouton de Téléchargement
+                st.download_button(
+                    label="⬇️ Télécharger l'image QR Code (PNG)",
+                    data=byte_im,
+                    file_name=f"QRCode_Veh_{veh_id}.png",
+                    mime="image/png"
+                )
+
+    with tab2:
+        st.subheader("📚 Guide d'utilisation")
+        st.markdown("""
+        **1. Comment ça marche ?**
+        - L'application crée un lien URL unique lié à l'ID du véhicule (ex: `?veh_id=3`).
+        - Ce lien est transformé en image QR Code.
+        - Quand le client scanne ce QR Code avec l'appareil photo de son smartphone, son navigateur s'ouvre sur ce lien.
+        
+        **2. Ce que le client voit :**
+        - L'application détecte qu'il arrive via un QR Code.
+        - Elle lui affiche une page **simplifiée et mobile-friendly** (sans le menu latéral complexe de l'ERP).
+        - Il peut voir : Le statut de l'atelier (Tôlerie, Peinture...), ses photos Avant/Après, et ses documents.
+        
+        **3. Important pour le déploiement :**
+        - Si tu testes sur ton PC, l'URL est `http://localhost:8501`. Le QR Code fonctionnera **si ton téléphone est connecté au même réseau Wi-Fi que ton PC**.
+        - Quand tu déploieras l'app sur **Streamlit Cloud**, change cette URL de base avec l'URL publique de ton app (ex: `https://mon-garage.streamlit.app`). Le QR Code fonctionnera alors pour **tout le monde dans le monde entier** !
+        """)
 
 def show_users():
     st.title("🔐 Gestion des Utilisateurs")
