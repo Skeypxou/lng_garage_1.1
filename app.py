@@ -167,6 +167,13 @@ st.markdown("""
     }
     [data-testid="stSidebar"] [role="radio"][aria-checked="true"] svg { fill: white; }
 
+    /* === STYLE POUR LE LOGO (Étape 3) === */
+    [data-testid="stSidebar"] img {
+        border-radius: 12px; /* Bords arrondis */
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Petite ombre */
+        margin-bottom: 15px; /* Espace sous le logo */
+    }
+
     .stButton>button { background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: 600; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(30, 58, 138, 0.2); width: 100%; }
     .stButton>button:hover { transform: translateY(-1px); box-shadow: 0 6px 12px rgba(30, 58, 138, 0.3); color: white; }
     .stButton>button[kind="secondary"] { background: #F1F5F9; color: #1E293B; border: 1px solid #E2E8F0; box-shadow: none; }
